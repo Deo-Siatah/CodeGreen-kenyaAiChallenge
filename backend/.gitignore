@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Dependency locks
+uv.lock
+poetry.lock
+Pipfile.lock
+
+# Logs & outputs
+logs/
+*.log
+data/outputs/
+
+# Environment variables
+.env
+.env.*
+
+# Build/distribution
+build/
+dist/
+*.egg-info/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Docker
+*.pid
+*.sock
+.docker/
