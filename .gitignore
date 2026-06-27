@@ -26,3 +26,6 @@ frontend/.env.local
 frontend/.env.*.local
 frontend/.vscode/
 frontend/.idea/
+
+# Local Netlify folder
+.netlify

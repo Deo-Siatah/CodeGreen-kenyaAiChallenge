@@ -109,13 +109,11 @@ export const FarmerDetail: React.FC<FarmerDetailProps> = ({ farmerId, onBack }) 
         setResult(updatedResult);
       } else {
         // Call backend simulate timeout endpoint
-        const res = await fetch(`http://localhost:8000/api/verify/${result.session_id}/simulate-timeout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone })
-        });
-        if (res.ok) {
+        const success = await api.simulateTimeout(result.session_id, phone);
+        if (success) {
           await loadData();
+        } else {
+          alert('Error simulating timeout');
         }
       }
     } catch (e) {
@@ -188,15 +186,7 @@ export const FarmerDetail: React.FC<FarmerDetailProps> = ({ farmerId, onBack }) 
       } else {
         // Simulate submitting responses one by one through backend
         for (let i = 0; i < answers.length; i++) {
-          await fetch(`http://localhost:8000/api/ussd/respond`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone,
-              session_id: result.session_id,
-              answer: answers[i]
-            })
-          });
+          await api.respondUssd(result.session_id, phone, answers[i]);
         }
         await loadData();
       }

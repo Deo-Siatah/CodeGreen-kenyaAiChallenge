@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   ShieldCheck, LayoutDashboard, Users, Award, ShieldAlert, 
-  RefreshCw, Zap, Database 
+  RefreshCw, Zap, Database, Settings
 } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { FarmerList } from './components/FarmerList';
@@ -19,6 +19,8 @@ function App() {
   const [apiOnline, setApiOnline] = useState(false);
   const [mockMode, setMockMode] = useState(api.isMockMode());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [tempUrl, setTempUrl] = useState(api.getBackendUrl());
 
   // Check API health
   const checkApi = async () => {
@@ -33,10 +35,11 @@ function App() {
     try {
       const isOnline = await checkApi();
       
-      // Auto toggle to mock mode if backend is offline and nothing was explicitly chosen
-      if (!isOnline && localStorage.getItem('hifadhi_use_mock') === null) {
-        api.setMockMode(true);
-        setMockMode(true);
+      // Auto toggle mock mode if nothing was explicitly chosen by the user yet
+      if (localStorage.getItem('hifadhi_use_mock') === null) {
+        const targetMock = !isOnline;
+        api.setMockMode(targetMock);
+        setMockMode(targetMock);
       }
 
       const farmerList = await api.getFarmers();
@@ -148,6 +151,18 @@ function App() {
                 Demo Sandbox
               </button>
             </div>
+
+            {/* Backend URL Settings button */}
+            <button
+              onClick={() => {
+                setTempUrl(api.getBackendUrl());
+                setShowSettings(true);
+              }}
+              className="p-2 bg-slate-900 border border-slate-850 hover:border-slate-700 rounded-lg hover:bg-slate-800 transition-all text-slate-400 hover:text-slate-100 cursor-pointer"
+              title="Configure Backend URL"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -247,6 +262,73 @@ function App() {
           <span>Vouching networks are dynamically monitored. Vouch responsibly.</span>
         </div>
       </footer>
+
+      {/* Settings Modal for Backend URL */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Settings className="w-4 h-4 text-teal-400" />
+                Backend Configuration
+              </h3>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="text-slate-400 hover:text-slate-200 text-sm font-semibold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-400">Backend API URL</label>
+              <input
+                type="text"
+                value={tempUrl}
+                onChange={(e) => setTempUrl(e.target.value)}
+                placeholder="e.g. http://localhost:8000"
+                className="bg-slate-950 border border-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-slate-200 text-sm rounded-xl px-3.5 py-2.5 outline-none transition-all"
+              />
+              <span className="text-[10px] text-slate-500">
+                Paste your ngrok URL or local IP address here. Empty uses the default dynamic fallback.
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 justify-end pt-2 border-t border-slate-800/60 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  api.setBackendUrl('');
+                  setTempUrl(api.getBackendUrl());
+                  setShowSettings(false);
+                  loadData();
+                }}
+                className="px-3.5 py-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-400 hover:text-slate-200 font-semibold rounded-xl transition-all cursor-pointer"
+              >
+                Reset Default
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="px-3.5 py-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-400 hover:text-slate-200 font-semibold rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  api.setBackendUrl(tempUrl);
+                  setShowSettings(false);
+                  loadData();
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-slate-100 font-bold rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Save & Connect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

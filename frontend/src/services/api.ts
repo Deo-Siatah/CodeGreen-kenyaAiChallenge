@@ -62,9 +62,20 @@ export interface Testifier {
   current_weight: number;
 }
 
-const BACKEND_URL = window.location.hostname.includes('ngrok')
-  ? `${window.location.protocol}//${window.location.host}`
-  : 'http://127.0.0.1:8000';
+const ENV_BACKEND_URL = (import.meta as any).env?.VITE_API_URL;
+
+let BACKEND_URL = ENV_BACKEND_URL || (
+  window.location.hostname.includes('ngrok')
+    ? `${window.location.protocol}//${window.location.host}`
+    : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? `${window.location.protocol}//${window.location.hostname}:8000`
+      : 'https://codegreen-kenyaaichallenge.onrender.com'
+);
+
+const savedBackendUrl = localStorage.getItem('hifadhi_backend_url');
+if (savedBackendUrl) {
+  BACKEND_URL = savedBackendUrl;
+}
 const HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 };
@@ -722,6 +733,64 @@ export class ApiService {
   async requestMoreInfo(_sessionId: string): Promise<boolean> {
     if (this.useMock) return true;
     return true;
+  }
+
+  async simulateTimeout(sessionId: string, phone: string): Promise<boolean> {
+    if (this.useMock) return true;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/verify/${sessionId}/simulate-timeout`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...HEADERS
+        },
+        body: JSON.stringify({ phone })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async respondUssd(sessionId: string, phone: string, answer: string): Promise<boolean> {
+    if (this.useMock) return true;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ussd/respond`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...HEADERS
+        },
+        body: JSON.stringify({
+          phone,
+          session_id: sessionId,
+          answer
+        })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  getBackendUrl(): string {
+    return BACKEND_URL;
+  }
+
+  setBackendUrl(url: string) {
+    if (url) {
+      localStorage.setItem('hifadhi_backend_url', url);
+      BACKEND_URL = url;
+    } else {
+      localStorage.removeItem('hifadhi_backend_url');
+      BACKEND_URL = ENV_BACKEND_URL || (
+        window.location.hostname.includes('ngrok')
+          ? `${window.location.protocol}//${window.location.host}`
+          : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? `${window.location.protocol}//${window.location.hostname}:8000`
+            : 'https://codegreen-kenyaaichallenge.onrender.com'
+      );
+    }
   }
 }
 
