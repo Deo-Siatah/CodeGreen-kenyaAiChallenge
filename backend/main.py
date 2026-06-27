@@ -9,6 +9,7 @@ from api.app import router as app_router
 from api.response import router as response_router
 from api.verification import router as verification_router
 from api.ussd import router as ussd_router
+from api.ai import router as ai_router
 
 app = FastAPI(
     title="AgriForesight API"
@@ -30,3 +31,4 @@ app.include_router(verification_sources_router)
 app.include_router(response_router)
 app.include_router(app_router)
 app.include_router(ussd_router)
+app.include_router(ai_router)
