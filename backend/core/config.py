@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     AFRICASTALKING_API_KEY: str
     AFRICASTALKING_USERNAME: str    
     
-    GEMINI_API_KEY: str | None = None
+    GEMINI_API_KEY: str 
 
     class Config:
         env_file = ".env"
