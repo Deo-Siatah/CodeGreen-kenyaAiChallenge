@@ -7,7 +7,6 @@ __pycache__/
 venv/
 
 # Dependency locks
-uv.lock
 poetry.lock
 Pipfile.lock
 
