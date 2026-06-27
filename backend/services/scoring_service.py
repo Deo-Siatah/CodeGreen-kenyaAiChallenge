@@ -125,6 +125,31 @@ class ScoringService:
             "analysis": analysis
         }
 
+    def calculate_current_score(self, status: Dict) -> float:
+        """
+        Calculate current intermediate trust score based on received responses.
+        Pending participants are excluded, while timeout participants contribute 0 score.
+        """
+        total_weighted = 0.0
+        total_weight = 0.0
+
+        for participant in status.get("received", []):
+            participant_type = participant.get("participant_type")
+            stored_responses = participant.get("responses", [])
+            raw_score = self._calculate_raw_score(stored_responses)
+            weight = self.weighting_service.get_weight(participant_type)
+            total_weighted += raw_score * weight
+            total_weight += weight
+
+        for participant in status.get("timeout", []):
+            participant_type = participant.get("participant_type")
+            weight = self.weighting_service.get_weight(participant_type)
+            total_weight += weight
+
+        if total_weight == 0.0:
+            return 0.0
+        return round(total_weighted / total_weight, 2)
+
     # ==========================================================
     # Helpers
     # ==========================================================
