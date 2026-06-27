@@ -62,7 +62,12 @@ export interface Testifier {
   current_weight: number;
 }
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = window.location.hostname.includes('ngrok')
+  ? `${window.location.protocol}//${window.location.host}`
+  : 'http://127.0.0.1:8000';
+const HEADERS = {
+  'ngrok-skip-browser-warning': 'true'
+};
 
 // Mock Data representing the 5 seeded farmers + additional metadata
 export const MOCK_FARMERS: Farmer[] = [
@@ -517,7 +522,10 @@ export class ApiService {
 
   async testConnection(): Promise<boolean> {
     try {
-      const res = await fetch(`${BACKEND_URL}/farmers`, { signal: AbortSignal.timeout(1000) });
+      const res = await fetch(`${BACKEND_URL}/farmers`, { 
+        signal: AbortSignal.timeout(1000),
+        headers: HEADERS
+      });
       return res.ok;
     } catch {
       return false;
@@ -529,7 +537,7 @@ export class ApiService {
       return MOCK_FARMERS;
     }
     try {
-      const res = await fetch(`${BACKEND_URL}/farmers`);
+      const res = await fetch(`${BACKEND_URL}/farmers`, { headers: HEADERS });
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
       // Map Neo4j format to Frontend Farmer format if needed
@@ -555,7 +563,7 @@ export class ApiService {
       return MOCK_FARMERS.find(f => f.id === id) || null;
     }
     try {
-      const res = await fetch(`${BACKEND_URL}/farmers/${id}`);
+      const res = await fetch(`${BACKEND_URL}/farmers/${id}`, { headers: HEADERS });
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
       const item = Array.isArray(data) ? data[0] : data;
@@ -590,7 +598,7 @@ export class ApiService {
       );
       if (!mockResult) return null;
 
-      const res = await fetch(`${BACKEND_URL}/api/verify/${mockResult.session_id}/result`);
+      const res = await fetch(`${BACKEND_URL}/api/verify/${mockResult.session_id}/result`, { headers: HEADERS });
       if (!res.ok) throw new Error('API failed');
       return await res.json();
     } catch (e) {
@@ -611,7 +619,7 @@ export class ApiService {
       return MOCK_VERIFICATION_LOGS[farmerId] || [];
     }
     try {
-      const res = await fetch(`${BACKEND_URL}/api/verify/${session_id}/logs`);
+      const res = await fetch(`${BACKEND_URL}/api/verify/${session_id}/logs`, { headers: HEADERS });
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
       return data.events || [];
@@ -676,7 +684,10 @@ export class ApiService {
     try {
       const res = await fetch(`${BACKEND_URL}/api/verify/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...HEADERS
+        },
         body: JSON.stringify({ farmer_id: farmerId })
       });
       if (!res.ok) throw new Error('API failed');

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.farmers import router as farmers_router
 from api.trust import router as trust_router
@@ -11,6 +12,14 @@ from api.ussd import router as ussd_router
 
 app = FastAPI(
     title="AgriForesight API"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(farmers_router)
