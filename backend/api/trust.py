@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import get_db_session
 from services.trust_service import TrustService
 
 from schemas.trust_source import TrustSourceCreate
@@ -13,36 +15,49 @@ router = APIRouter(
 )
 
 
+def _columns(obj) -> dict:
+    """Flatten a freshly created row for the response.
+
+    The service returns the ORM object so it stays usable as a service; handing
+    that straight to FastAPI would fall back to vars() and drag the SQLAlchemy
+    InstanceState into the response body.
+    """
+    return {
+        column.name: getattr(obj, column.name)
+        for column in obj.__table__.columns
+    }
+
+
 @router.post("/sources")
-def create_trust_source(
-    payload: TrustSourceCreate
+async def create_trust_source(
+    payload: TrustSourceCreate,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    return service.create_trust_source(
-        payload.model_dump()
-    )
+    return _columns(await service.create_trust_source(session, payload.model_dump()))
+
 
 @router.post("/institutions")
-def create_institution(
-    payload: InstitutionCreate
+async def create_institution(
+    payload: InstitutionCreate,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    return service.create_institution(
-        payload.model_dump()
-    )
+    return _columns(await service.create_institution(session, payload.model_dump()))
+
 
 @router.post("/social-groups")
-def create_social_group(
-    payload: SocialGroupCreate
+async def create_social_group(
+    payload: SocialGroupCreate,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    return service.create_social_group(
-        payload.model_dump()
-    )
+    return _columns(await service.create_social_group(session, payload.model_dump()))
+
 
 @router.post("/market-actors")
-def create_market_actor(
-    payload: MarketActorCreate
+async def create_market_actor(
+    payload: MarketActorCreate,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    return service.create_market_actor(
-        payload.model_dump()
-    )
+    return _columns(await service.create_market_actor(session, payload.model_dump()))
+
 
 service = TrustService()

@@ -1,0 +1,497 @@
+from __future__ import annotations
+
+import logging
+from typing import Literal 
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.config import settings
+from core.database import get_db_session
+from repositories.scoring_repository import ScoringRepository
+from repositories.verification_repository import VerificationRepository
+from schemas.section13 import (
+    ExplanationResponse,
+    FarmRouteCreate,
+    FarmerRouteCreate,
+    LinkRequest,
+    SettlementRequest,
+    VerificationResponsePayload,
+    VerificationResultResponse,
+    VerificationStartRequest,
+)
+from schemas.institution import InstitutionCreate
+from schemas.loan import LoanCreate
+from services.loan_service import (
+    NoScoreError,
+    LoanNotEligibleError,
+    AmountExceedsRecommendationError,
+    LoanNotFoundError,
+    InvalidLoanStateError,
+    LoanService,
+)
+from services.farmer_service import DuplicateFarmerError
+from schemas.market_actor import MarketActorCreate
+from schemas.social_group import SocialGroupCreate
+from schemas.trust_source import TrustSourceCreate
+from services.explainability.explainability_service import (
+    ExplanationGenerationError,
+    ExplainabilityService,
+)
+from services.farmer_service import FarmerService
+from services.scoring_service import ScoreComputationResult
+from services.trust_service import TrustService
+from services.verification_service import (
+    ParticipantAlreadyRespondedError,
+    ParticipantNotFoundError,
+    VerificationService,
+)
+
+router = APIRouter(prefix="/api", tags=["Section 13"])
+logger = logging.getLogger(__name__)
+
+
+def get_farmer_service() -> FarmerService:
+    from main import get_farmer_service as factory
+
+    return factory()
+
+
+def get_trust_service() -> TrustService:
+    from main import get_trust_service as factory
+
+    return factory()
+
+
+def get_verification_service() -> VerificationService:
+    from main import get_verification_service as factory
+
+    return factory()
+
+
+def get_explainability_service() -> ExplainabilityService:
+    from main import get_explainability_service as factory
+
+    return factory()
+
+
+def _columns(obj) -> dict:
+    return {column.name: getattr(obj, column.name) for column in obj.__table__.columns}
+
+
+@router.post("/farmers")
+async def create_farmer(
+    payload: FarmerRouteCreate,
+    session: AsyncSession = Depends(get_db_session),
+    service: FarmerService = Depends(get_farmer_service),
+):
+    try:
+        result = await service.create_farmer(session, payload.model_dump())
+        await session.commit()
+        return _columns(result)
+    except DuplicateFarmerError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/farmers/{farmer_id}/farm")
+async def create_farm(
+    farmer_id: UUID,
+    payload: FarmRouteCreate,
+    session: AsyncSession = Depends(get_db_session),
+    service: FarmerService = Depends(get_farmer_service),
+):
+    result = await service.create_farm(session, farmer_id, payload.model_dump())
+    await session.commit()
+    return _columns(result)
+
+
+@router.get("/farmers/{farmer_id}")
+async def get_farmer(
+    farmer_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    service: FarmerService = Depends(get_farmer_service),
+):
+    result = await service.get_farmer(session, farmer_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return _columns(result)
+
+
+async def _create_trust(payload, service_method, session, service):
+    result = await service_method(session, payload.model_dump())
+    await session.commit()
+    return _columns(result)
+
+
+@router.post("/trust/sources")
+async def create_trust_source(
+    payload: TrustSourceCreate,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _create_trust(payload, service.create_trust_source, session, service)
+
+
+@router.post("/trust/institutions")
+async def create_institution(
+    payload: InstitutionCreate,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _create_trust(payload, service.create_institution, session, service)
+
+
+@router.post("/trust/social-groups")
+async def create_social_group(
+    payload: SocialGroupCreate,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _create_trust(payload, service.create_social_group, session, service)
+
+
+@router.post("/trust/market-actors")
+async def create_market_actor(
+    payload: MarketActorCreate,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _create_trust(payload, service.create_market_actor, session, service)
+
+
+async def _link(service_method, farmer_id, payload, session):
+    result = await service_method(session, farmer_id, payload.related_id)
+    await session.commit()
+    return _columns(result)
+
+
+@router.post("/farmers/{farmer_id}/link-trust-source")
+async def link_trust_source(
+    farmer_id: UUID,
+    payload: LinkRequest,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _link(service.link_trust_source, farmer_id, payload, session)
+
+
+@router.post("/farmers/{farmer_id}/link-institution")
+async def link_institution(
+    farmer_id: UUID,
+    payload: LinkRequest,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _link(service.link_institution, farmer_id, payload, session)
+
+
+@router.post("/farmers/{farmer_id}/link-social-group")
+async def link_social_group(
+    farmer_id: UUID,
+    payload: LinkRequest,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _link(service.link_social_group, farmer_id, payload, session)
+
+
+@router.post("/farmers/{farmer_id}/link-market-actor")
+async def link_market_actor(
+    farmer_id: UUID,
+    payload: LinkRequest,
+    session=Depends(get_db_session),
+    service=Depends(get_trust_service),
+):
+    return await _link(service.link_market_actor, farmer_id, payload, session)
+
+
+@router.post("/verify/start")
+async def start_verification(
+    payload: VerificationStartRequest,
+    session=Depends(get_db_session),
+    service=Depends(get_verification_service),
+):
+    result = await service.start_verification(session, payload.farmer_id)
+    await session.commit()
+    return {
+        "session_id": str(result.id),
+        "farmer_id": str(result.farmer_id),
+        "status": result.status,
+    }
+
+
+@router.post("/verify/{session_id}/respond/{participant_id}")
+async def submit_response(
+    session_id: UUID,
+    participant_id: UUID,
+    payload: VerificationResponsePayload,
+    session=Depends(get_db_session),
+    service=Depends(get_verification_service),
+):
+    try:
+        result = await service.submit_response(
+            session, session_id, participant_id, payload.model_dump()
+        )
+    except ParticipantAlreadyRespondedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ParticipantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception(
+            "Verification response failed: session_id=%s participant_id=%s",
+            session_id,
+            participant_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Verification response failed: {type(exc).__name__}: {exc}",
+        ) from exc
+    await session.commit()
+    return result
+
+
+@router.post("/verify/{session_id}/timeout/{participant_id}")
+async def timeout_participant(
+    session_id: UUID,
+    participant_id: UUID,
+    session=Depends(get_db_session),
+    service=Depends(get_verification_service),
+):
+    try:
+        result = await service.mark_participant_timeout(session, session_id, participant_id)
+    except ParticipantAlreadyRespondedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ParticipantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await session.commit()
+    return result
+
+
+@router.get("/verify/{session_id}/status")
+async def verification_status(
+    session_id: UUID,
+    session=Depends(get_db_session),
+    service=Depends(get_verification_service),
+):
+    verification_session, participants = await service.get_session_with_participants(
+        session, session_id
+    )
+    if verification_session is None:
+        raise HTTPException(status_code=404, detail="Verification session not found")
+    return {
+        "session_id": str(session_id),
+        "status": verification_session.status,
+        "participants": [_columns(item) for item in participants],
+    }
+
+
+@router.get("/verify/{session_id}/result", response_model=VerificationResultResponse)
+async def verification_result(session_id: UUID, session=Depends(get_db_session)):
+    verification_session = await VerificationRepository().get_session(session, session_id)
+    if verification_session is None:
+        raise HTTPException(status_code=404, detail="Verification session not found")
+    profile = await ScoringRepository().get_current_score(
+        session, verification_session.farmer_id
+    )
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Score not found")
+    return {"session_id": str(session_id), "score_profile": _columns(profile)}
+
+
+@router.get("/verify/{session_id}/explanation", response_model=ExplanationResponse)
+async def verification_explanation(
+    session_id: UUID,
+    session=Depends(get_db_session),
+    service=Depends(get_explainability_service),
+    mode: Literal["expert", "farmer"] | None = Query(default=None),
+    language: str = Query(default=None, pattern=r"^[A-Za-z][A-Za-z \\-]{1,29}$"),
+):
+    # This route uses get_db_session, not get_scoring_session: it only reads
+    # Validate mode parameter
+    if mode is not None and mode not in ['expert', 'farmer']:
+        raise HTTPException(
+            status_code=422,
+            detail='Invalid mode. Must be expert or farmer'
+        )
+
+    # verification_sessions, score_profiles, and score_components - never
+    # the farmers table - so the restricted scoring role has no gender-
+    # exposure risk here to guard against. get_scoring_session is reserved
+    # for a future call site that genuinely needs farmer-table context.
+    try:
+        verification_session = await VerificationRepository().get_session(
+            session, session_id
+        )
+        if verification_session is None:
+            raise HTTPException(
+                status_code=404, detail="Verification session not found"
+            )
+
+        logger.info(
+            "Explanation lookup: session_id=%s farmer_id=%s",
+            session_id,
+            verification_session.farmer_id,
+        )
+        scoring_repository = ScoringRepository()
+        profile = await scoring_repository.get_current_score(
+            session, verification_session.farmer_id
+        )
+        if profile is None:
+            raise HTTPException(status_code=404, detail="Score not found")
+        components = await scoring_repository.get_score_components(session, profile.id)
+        breakdown = ScoreComputationResult(
+            profile,
+            list(components),
+            "combined"
+            if profile.capacity_score is not None
+            else "capacity axis unavailable - character only",
+        )
+        resolved_mode = mode or settings.DEFAULT_EXPLANATION_MODE
+        explanation = await service.explain(breakdown, resolved_mode, language or "English")
+        return {"session_id": str(session_id), "explanation": explanation}
+    except HTTPException:
+        raise
+    except ExplanationGenerationError as exc:
+        logger.exception(
+            "Explanation provider failed: session_id=%s error_type=%s",
+            session_id,
+            type(exc.__cause__ or exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Explanation provider failed: {type(exc.__cause__ or exc).__name__}: {exc}",
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "Explanation lookup or generation failed: session_id=%s error_type=%s",
+            session_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Explanation request failed: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@router.post("/farmers/{farmer_id}/inkind-settlement")
+async def create_settlement(
+    farmer_id: UUID,
+    payload: SettlementRequest,
+    session: AsyncSession = Depends(get_db_session),
+    service=Depends(get_verification_service),
+):
+    result = await service.create_settlement(session, farmer_id, payload.model_dump())
+    await session.commit()
+    return _columns(result)
+
+
+def get_loan_service():
+    from main import get_loan_service as factory
+
+    return factory()
+
+
+@router.post("/loans")
+async def create_loan(
+    payload: LoanCreate,
+    session: AsyncSession = Depends(get_db_session),
+    service: LoanService = Depends(get_loan_service),
+):
+    """Create a new loan for a farmer."""
+    try:
+        result = await service.create_loan(
+            session,
+            payload.farmer_id,
+            payload.amount,
+            payload.purpose,
+            payload.duration_months,
+            payload.interest_rate,
+        )
+        await session.commit()
+        return _columns(result)
+    except NoScoreError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except LoanNotEligibleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except AmountExceedsRecommendationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except LoanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidLoanStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/loans/{loan_id}/disburse")
+async def mark_disbursed(
+    loan_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    service: "LoanService" = Depends(get_loan_service),
+):
+    """Mark a loan as disbursed."""
+    try:
+        result = await service.mark_disbursed(session, loan_id)
+        await session.commit()
+        return _columns(result)
+    except LoanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidLoanStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/loans/{loan_id}/repay")
+async def repay_loan(
+    loan_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    service: "LoanService" = Depends(get_loan_service),
+):
+    """Repay a loan."""
+    try:
+        result = await service.resolve_loan(session, loan_id, "repaid")
+        await session.commit()
+        return _columns(result)
+    except LoanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidLoanStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/loans/{loan_id}/default")
+async def default_loan(
+    loan_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    service: "LoanService" = Depends(get_loan_service),
+):
+    """Mark a loan as defaulted."""
+    try:
+        result = await service.resolve_loan(session, loan_id, "defaulted")
+        await session.commit()
+        return _columns(result)
+    except LoanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidLoanStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/loans")
+async def get_loans(
+    farmer_id: UUID | None = None,
+    status: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get loans, optionally filtered by farmer_id and/or status."""
+    from repositories.loan_repository import LoanRepository
+    
+    repo = LoanRepository()
+    loans = await repo.get_loans(session, farmer_id, status)
+    return [_columns(loan) for loan in loans]
+
+

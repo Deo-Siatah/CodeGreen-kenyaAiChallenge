@@ -1,0 +1,92 @@
+- **1. Purpose**
+  - Hifadhi is an alternative credit-verification tool for Kenyan smallholder farmers who lack collateral or formal credit history.
+  - Loan officers assess farmer trust using community and market verifiers, then receive a weighted trust score and loan recommendation.
+
+- **2. Architecture**
+  - **Frontend:** React 19 + TypeScript + Vite; admin dashboard with farmer portfolio, farmer detail, testifier audit, settings, and demo/live modes ([frontend/src/App.tsx](frontend/src/App.tsx)).
+  - **Backend:** FastAPI application; routes are registered in [backend/main.py](backend/main.py) and delegate to services and Neo4j repositories.
+  - **Database:** Neo4j accessed through a global Bolt driver ([backend/core/database.py](backend/core/database.py)); constraints/indexes are created by [backend/graph/schema.py](backend/graph/schema.py).
+  - **Persistence layer:** Cypher repositories under [backend/repositories](backend/repositories); active verification uses session, participant-response, log, and farmer repositories.
+  - **Frontend-to-backend connection:** [frontend/src/services/api.ts](frontend/src/services/api.ts) uses `VITE_API_URL`, a saved local-storage URL, localhost:8000, or the deployed Render URL; it falls back to mock data.
+  - **Google Gemini:** Generates structured explanations from anonymized score summaries through [backend/services/gemini_service.py](backend/services/gemini_service.py); the registered `/ai` adapter is currently incompatible with `ExplainabilityService`.
+  - **Africa's Talking:** Sends final SMS through [backend/services/sms_service.py](backend/services/sms_service.py) and receives/processes USSD form callbacks through [backend/api/ussd.py](backend/api/ussd.py); inbound SMS is only logged by [backend/api/verification_sources.py](backend/api/verification_sources.py).
+  - **Uvicorn:** Runs the FastAPI app from `backend/main.py`; Docker files exist but are not the primary local workflow.
+
+- **3. Data Model**
+  - **Farmer:** `id`, `full_name`, `national_id`, `phone`, `gender`, `date_of_birth`, `age`, `location`, `village`, `sub_county`, `county`, `farming_type`, `primary_activity`, `years_farming`, education/contact fields ([backend/schemas/farmer.py](backend/schemas/farmer.py)).
+  - **Farm:** `id`, `acreage`, `production_type`, crops/livestock, irrigation and location fields ([backend/schemas/farm.py](backend/schemas/farm.py)).
+  - **TrustSource:** `id`, `name`, `category`, `phone`, identity/location, institution, years-known, credibility fields ([backend/schemas/trust_source.py](backend/schemas/trust_source.py)).
+  - **Institution:** name, type, registration, location, county, phone, email ([backend/schemas/institution.py](backend/schemas/institution.py)).
+  - **SocialGroup:** name, group type, location, formation year, membership and savings fields ([backend/schemas/social_group.py](backend/schemas/social_group.py)).
+  - **MarketActor:** name, actor type, contact/location, business and operating-history fields ([backend/schemas/market_actor.py](backend/schemas/market_actor.py)).
+  - **Testimonial:** rating, comments, confidence, relationship years, personal-knowledge flag ([backend/schemas/testimonial.py](backend/schemas/testimonial.py)).
+  - **BuyerTestimonial:** purchase frequency, relationship duration, volume, reliability, transaction value ([backend/schemas/buyer_testimonial.py](backend/schemas/buyer_testimonial.py)).
+  - **InKindSettlementProof:** settlement type, estimated value, description, verification status, counterparty ([backend/schemas/inkind_settlement.py](backend/schemas/inkind_settlement.py)).
+  - **VerificationSession:** session status/timestamps, expected responses and farmer association ([backend/schemas/verify_session.py](backend/schemas/verify_session.py)).
+  - **FinancialSignal:** signal type, score, period, source ([backend/schemas/financial_signal.py](backend/schemas/financial_signal.py)).
+  - **Loan:** amount, purpose, duration, interest, status and application/approval dates ([backend/schemas/loan.py](backend/schemas/loan.py)).
+  - **ScoreProfile / Recommendation / Notification / Evidence:** declared graph labels and schemas exist; they are not part of the primary active verification API path ([backend/graph/schema.py](backend/graph/schema.py), [backend/schemas](backend/schemas)).
+  - **Implemented relationships:** `Farmer-OWNS->Farm`; `Farmer-VERIFIED_BY->TrustSource`; `Farmer-MEMBER_OF->Institution/SocialGroup`; `Farmer-SELLS_TO->MarketActor`; testimonial, buyer-testimonial, settlement, verification-session, financial-signal, score, recommendation, and notification links are implemented or represented by repository methods ([backend/services/graph_service.py](backend/services/graph_service.py), [backend/repositories/relationship_repositoy.py](backend/repositories/relationship_repositoy.py)).
+  - **Constraints/indexes:** unique `id` constraints cover Farmer, TrustSource, Institution, SocialGroup, MarketActor, Farm, Loan, VerificationSession, Testimonial, BuyerTestimonial, InKindSettlementProof, FinancialSignal, ScoreProfile, Recommendation, Notification, Evidence; search indexes cover phone/location/category/type/status fields ([backend/graph/schema.py](backend/graph/schema.py)).
+
+- **4. Core Logic**
+  - **Verification start:** `POST /api/verify/start` invokes `VerificationService.start_verification`; it validates the farmer, creates a Neo4j session, loads linked trust sources, creates pending participant records, and writes audit logs. It does not send outreach SMS despite the README claim ([backend/services/verification_service.py](backend/services/verification_service.py)).
+  - **USSD response collection:** Africa's Talking callback or the frontend response endpoint invokes `USSDService`; inputs `1/2/3` map to `YES/NO/UNSURE`, question completion marks a participant received, and completion triggers final scoring ([backend/services/ussd_service.py](backend/services/ussd_service.py)).
+  - **Weighted scoring:** `ScoringService.calculate_final_score` maps `YES=100`, `UNSURE=50`, all other answers including `NO=0`; each participant score is averaged, then `sum(raw_score * weight) / sum(weight)` is calculated. Received participants add numerator and denominator; timed-out participants add zero numerator but retain denominator weight ([backend/services/scoring_service.py](backend/services/scoring_service.py)).
+  - **Weights:** `Chief`, `School Head`, `Cooperative Officer`, `SACCO Officer`, `Buyer`, `Aggregator`, and `Savings Group` weigh `4`; most professional/community roles weigh `3`; `Neighbor` weighs `1`; unknown categories default to `1` ([backend/services/weighting_service.py](backend/services/weighting_service.py)).
+  - **Decision thresholds:** timeout always yields `REVIEW_REQUIRED`; otherwise `>=75` yields `ELIGIBLE` / `APPROVE_LEVEL_2` / KES 5,000, `>=60` yields `ELIGIBLE` / `APPROVE_LEVEL_1` / KES 3,000, `45-59.99` yields manual review, and `<45` yields `DECLINE` ([backend/services/scoring_service.py](backend/services/scoring_service.py)).
+  - **Timeouts:** `POST /api/verify/{session_id}/simulate-timeout` manually marks a verifier after a claimed 48-hour window; there is no scheduler, worker, or automatic timestamp-based timeout ([backend/services/verification_service.py](backend/services/verification_service.py)).
+  - **SMS notification:** `VerificationService.send_final_sms` formats and sends a result to the farmer after completion/timeout; the message is English-only and marked as a future Phase 3 translation in code ([backend/services/verification_service.py](backend/services/verification_service.py)).
+  - **AI explanation:** Gemini 2.5 Flash receives a privacy-reduced payload containing score, decision, recommendation, and participant type/score summaries; parser/orchestration exists in [backend/services/explainability_service.py](backend/services/explainability_service.py), but the `/ai` route calls nonexistent methods.
+
+- **5. API Surface**
+  - **Farmers:** `POST /farmers` creates a farmer; `GET /farmers` lists farmers; `GET /farmers/{farmer_id}` retrieves one ([backend/api/farmers.py](backend/api/farmers.py)).
+  - **Trust network:** `POST /trust/sources`, `/trust/institutions`, `/trust/social-groups`, `/trust/market-actors` create verifier, institution, group, and market-actor records ([backend/api/trust.py](backend/api/trust.py)).
+  - **Relationships:** `POST /relationships/farmer-farm`, `/farmer-trust-source`, `/farmer-institution`, `/farmer-social-group`, `/farmer-market-actor` link graph entities; `GET /relationships/graph/{farmer_id}` retrieves a farmer graph ([backend/api/relationship.py](backend/api/relationship.py)).
+  - **Active verification:** `POST /api/verify/start` starts a session; `POST /api/verify/{session_id}/simulate-timeout` marks a participant timed out; `GET /api/verify/{session_id}/status` gets progress; `GET /api/verify/{session_id}/result` gets final score; `POST /api/verify/{session_id}/send-sms` sends final SMS; `GET /api/verify/{session_id}/logs` gets audit events ([backend/api/verification.py](backend/api/verification.py)).
+  - **USSD:** `POST /api/ussd/start` starts a session; `POST /api/ussd/respond` submits an answer; `POST /api/ussd/webhook/callback` handles Africa's Talking form callbacks ([backend/api/ussd.py](backend/api/ussd.py)).
+  - **Legacy graph verification:** `POST /verification/sessions`, `/verification/testimonials`, `/verification/buyer-testimonials`, `/verification/settlement-proofs`, and `/verification/sms` are registered, but the first four call missing `GraphService` methods and the SMS route only prints input ([backend/api/verification_sources.py](backend/api/verification_sources.py)).
+  - **Unregistered legacy simulation:** `POST /responses/simulate/{session_id}` is defined in [backend/api/response.py](backend/api/response.py) but its router is imported and not included by [backend/main.py](backend/main.py), so it is not currently exposed.
+  - **Legacy app verification:** `POST /appverification/start` uses `VerificationOrchestrator`, whose repository calls a missing `create_farmer_session` method ([backend/api/verification.py](backend/api/verification.py), [backend/services/verification_orchestrator.py](backend/services/verification_orchestrator.py)).
+  - **AI:** `POST /ai/explain/{session_id}` and `GET /ai/explain/{session_id}` are registered but currently fail because `ExplainabilityService` exposes `explain()` rather than `generate_explanation()` or `get_explanation()` ([backend/api/ai.py](backend/api/ai.py), [backend/services/explainability_service.py](backend/services/explainability_service.py)).
+
+- **6. Frontend**
+  - **Dashboard:** portfolio totals, approval rate, average recommended loan, pending decisions, crop distribution, and recent assessments ([frontend/src/components/Dashboard.tsx](frontend/src/components/Dashboard.tsx)); repayment rate is hardcoded to `97.4%`.
+  - **Farmer Applications:** searchable/filterable farmer list with score tiers, recommendations, detail navigation, and “Assess Trust” action ([frontend/src/components/FarmerList.tsx](frontend/src/components/FarmerList.tsx)).
+  - **Farmer Detail:** farmer profile, score math, participant answers, timeout/response simulation, audit trail, score decision, final action buttons, and English/Kiswahili display toggle ([frontend/src/components/FarmerDetail.tsx](frontend/src/components/FarmerDetail.tsx)).
+  - **Testifier Audits:** verifier credibility table with default-rate flags and displayed weights; data is always mock because there is no backend testifier-list endpoint ([frontend/src/components/TestifiersView.tsx](frontend/src/components/TestifiersView.tsx)).
+  - **Settings/navigation:** live API versus Demo Sandbox toggle and browser-local backend URL override ([frontend/src/App.tsx](frontend/src/App.tsx)).
+  - **API layer:** all frontend networking and mock fallback lives in [frontend/src/services/api.ts](frontend/src/services/api.ts); loan approve/decline/request-more-info actions currently return success without backend calls.
+  - **Live-mode limitation:** result lookup maps known mock farmer IDs to known mock session IDs before calling the backend, so it cannot discover arbitrary real sessions by querying the backend.
+
+- **7. External Dependencies & Config**
+  - **Required backend environment variables:** `APP_NAME`; `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`; `BACKEND_URL`; `USSD_WEBHOOK_URL`; `SMS_WEBHOOK_URL`; `AFRICASTALKING_USERNAME`; `AFRICASTALKING_API_KEY`; `GEMINI_API_KEY` ([backend/core/config.py](backend/core/config.py)).
+  - **Neo4j:** load-bearing; the backend initializes a driver at import time and active farmer/verification/relationship operations depend on it ([backend/core/database.py](backend/core/database.py)).
+  - **Africa's Talking:** load-bearing for final SMS and live USSD callback delivery; SDK initialization occurs in `SmsService` and USSD expects Africa's Talking field names ([backend/services/sms_service.py](backend/services/sms_service.py), [backend/api/ussd.py](backend/api/ussd.py)).
+  - **Google Gemini:** required for the intended AI explanation path; `GeminiService` configures `gemini-2.5-flash` from `GEMINI_API_KEY` ([backend/services/gemini_service.py](backend/services/gemini_service.py)).
+  - **Backend packages:** FastAPI, Uvicorn, Pydantic Settings, Neo4j driver, Africa's Talking SDK, Google Generative AI SDK, multipart form support ([backend/pyproject.toml](backend/pyproject.toml)).
+  - **Frontend packages:** React, React DOM, TypeScript, Vite, Tailwind/PostCSS, Lucide icons, and Oxlint ([frontend/package.json](frontend/package.json)).
+
+- **8. Current State**
+  - **Implemented:** Neo4j driver/repositories, graph constraints/indexes, farmer/trust/relationship CRUD paths, active verification session lifecycle, USSD question/answer flow, Python weighted scoring, audit logs, manual timeout, and final Africa's Talking SMS sending when credentials and database are available.
+  - **Partially implemented:** Gemini generation and parsing exist, but the public `/ai` endpoints are broken; SMS SDK sending exists, but participant outreach and inbound SMS answer processing do not; Kiswahili is a frontend hardcoded display translation, not Gemini/SMS translation.
+  - **Simulated/mock:** frontend defaults to mock mode when no preference exists; five farmers, testifiers, results, logs, verifier responses, timeout behavior, and some loan actions are local mock data or local state ([frontend/src/services/api.ts](frontend/src/services/api.ts), [frontend/src/components/FarmerDetail.tsx](frontend/src/components/FarmerDetail.tsx)).
+  - **Broken/legacy:** `/ai/*`; `/appverification/start`; `/verification/sessions`; `/verification/testimonials`; `/verification/buyer-testimonials`; `/verification/settlement-proofs`; and the older scoring/simulation services have inconsistent formulas and/or missing service methods.
+  - **README overclaims:** scoring is Python-side rather than Cypher aggregation; starting verification logs participants but does not send SMS; replying by SMS is not implemented; dynamic verifier credibility weights are mock UI data, while active backend weights are static category constants.
+  - **Known limitations/comments:** timeout is demo/manual only; final SMS says translation is future “Phase 3”; no automatic score reevaluation when relationships change; no active `TODO`/`FIXME` markers were found.
+
+- **9. File Tree**
+  - `backend/api/`: FastAPI route controllers for farmers, trust entities, relationships, verification, USSD, SMS, and AI.
+  - `backend/core/`: environment settings and Neo4j driver initialization.
+  - `backend/graph/`: Neo4j constraints and indexes.
+  - `backend/repositories/`: Cypher persistence/query interfaces for graph entities and verification records.
+  - `backend/schemas/`: Pydantic request/response and entity models.
+  - `backend/services/`: farmer, graph, trust, verification, scoring, weighting, USSD, SMS, Gemini, and explainability business logic.
+  - `backend/prompts/`, `backend/parsers/`, `backend/services/ai/`: Gemini prompt construction, response parsing, and privacy-reduced payload building.
+  - `backend/scripts/`: graph initialization and manual/test scripts.
+  - `backend/main.py`: FastAPI application entry point and router registration.
+  - `frontend/src/components/`: dashboard, farmer list/detail, and testifier audit screens.
+  - `frontend/src/services/`: frontend API client, local-storage configuration, and mock datasets.
+  - `frontend/src/assets/`: bundled frontend images/assets.
+  - `frontend/`: Vite/TypeScript/Tailwind frontend configuration and package metadata.
+  - `Dockerfile`, `docker-compose.yaml`, `setup.md`: container/developer setup artifacts; the README’s direct Python/npm commands are the clearest documented workflow.

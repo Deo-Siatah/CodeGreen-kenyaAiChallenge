@@ -1,351 +1,305 @@
-from typing import Dict, List
+from __future__ import annotations
 
-from services.weighting_service import WeightingService
+import uuid
+from dataclasses import dataclass
+from datetime import date
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.scoring import ScoreComponent, ScoreProfile
+from repositories.credibility_repository import CredibilityRepository
+from repositories.farm_activity_repository import FarmActivityRepository
+from repositories.farmer_repository import FarmerRepository
+from repositories.scoring_repository import ScoringRepository
+from repositories.signal_repository import SignalRepository
+from repositories.trust_repository import TrustRepository
+from repositories.verification_repository import VerificationRepository
+from services import weighting
+from services.audit_service import AuditService
+
+
+class InsufficientDataError(ValueError):
+    """Raised when a farmer has no scoreable signal at all."""
+
+
+@dataclass(frozen=True)
+class ScoreComputationResult:
+    profile: ScoreProfile
+    components: list[ScoreComponent]
+    axis_note: str
 
 
 class ScoringService:
-    """
-    Calculates the final trust score once verification is complete.
+    """Compute and persist one explainable score in the caller's transaction."""
 
-    This service is intentionally stateless. It does not calculate
-    intermediate scores while responses are still coming in.
-    """
+    def __init__(
+        self,
+        signal_repository: SignalRepository | None = None,
+        credibility_repository: CredibilityRepository | None = None,
+        trust_repository: TrustRepository | None = None,
+        verification_repository: VerificationRepository | None = None,
+        farmer_repository: FarmerRepository | None = None,
+        farm_activity_repository: FarmActivityRepository | None = None,
+        scoring_repository: ScoringRepository | None = None,
+        audit_service: AuditService | None = None,
+    ) -> None:
+        self.signal_repository = signal_repository or SignalRepository()
+        self.credibility_repository = credibility_repository or CredibilityRepository()
+        self.trust_repository = trust_repository or TrustRepository()
+        self.verification_repository = (
+            verification_repository or VerificationRepository()
+        )
+        self.farmer_repository = farmer_repository or FarmerRepository()
+        self.farm_activity_repository = (
+            farm_activity_repository or FarmActivityRepository()
+        )
+        self.scoring_repository = scoring_repository or ScoringRepository()
+        self.audit_service = audit_service or AuditService()
 
-    def __init__(self, weighting_service: WeightingService):
-        self.weighting_service = weighting_service
+    async def compute_score(
+        self, session: AsyncSession, farmer_id: uuid.UUID | str
+    ) -> ScoreComputationResult:
+        signals = await self.signal_repository.get_signals_for_farmer(session, farmer_id)
+        components: list[dict[str, Any]] = []
+        testimony_entries: list[weighting.TestimonyEntry] = []
 
-    def calculate_final_score(self, status: Dict) -> Dict:
-        """
-        Calculate the final weighted trust score.
-
-        Received participants contribute their weighted score.
-
-        Timeout participants contribute zero while still
-        contributing their weighting, penalizing missing
-        community verification.
-        """
-
-        participant_scores = []
-
-        total_weighted = 0.0
-        total_weight = 0.0
-
-        # -------------------------------------------------
-        # Score participants that responded
-        # -------------------------------------------------
-
-        for participant in status.get("received", []):
-
-            participant_type = participant.get("participant_type")
-            participant_name = participant.get("participant_name")
-
-            stored_responses = participant.get("responses", [])
-
-            raw_score = self._calculate_raw_score(
-                stored_responses
+        for testimony in signals.testimonials:
+            participant = await self.verification_repository.get_participant(
+                session, testimony.participant_id
+            )
+            if participant is None or participant.participant_type != "trust_source":
+                continue
+            trust_source = await self.trust_repository.get_trust_source(
+                session, participant.participant_id
+            )
+            if trust_source is None:
+                continue
+            credibility = await self.credibility_repository.get_or_create_credibility(
+                session, "trust_source", trust_source.id
+            )
+            base_weight = weighting.BASE_CATEGORY_WEIGHTS.get(
+                trust_source.category, weighting.DEFAULT_UNKNOWN_WEIGHT
+            )
+            contribution = weighting.testimony_contribution(
+                testimony.rating, base_weight, credibility.credibility_score
+            )
+            testimony_entries.append(
+                weighting.TestimonyEntry(
+                    contribution, base_weight, trust_source.category
+                )
+            )
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "testimony",
+                    "raw_value": f"rating={testimony.rating}",
+                    "contribution": contribution,
+                    "weight": base_weight,
+                    "trust_source_id": trust_source.id,
+                }
             )
 
-            weight = self.weighting_service.get_weight(
-                participant_type
+        testimony_score = None
+        if testimony_entries:
+            pooled = weighting.pool_testimonies(testimony_entries)
+            testimony_score = pooled.pooled_score
+            pool_id = uuid.uuid4()
+            for component in components:
+                component["pool_id"] = pool_id
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "testimony_pool",
+                    "raw_value": f"{len(testimony_entries)} testimonies",
+                    "contribution": testimony_score,
+                    "weight": weighting.TESTIMONY_WEIGHT,
+                    "pool_id": pool_id,
+                }
             )
 
-            weighted_score = raw_score * weight
+        buyer_pool_id = uuid.uuid4()
+        buyer_testimony_entries = []
+        for row in signals.buyer_testimonials:
+            participant = await self.verification_repository.get_participant(
+                session, row.participant_id
+            )
+            if participant is None or participant.participant_type != "market_actor":
+                continue
+            market_actor = await self.trust_repository.get_market_actor(
+                session, participant.participant_id
+            )
+            if market_actor is None:
+                continue
+            
+            base_weight = weighting.BASE_CATEGORY_WEIGHTS.get(
+                market_actor.actor_type, weighting.DEFAULT_UNKNOWN_WEIGHT
+            )
+            credibility = await self.credibility_repository.get_or_create_credibility(
+                session, "market_actor", market_actor.id
+            )
+            contribution = weighting.testimony_contribution(
+                row.reliability_rating, base_weight, credibility.credibility_score
+            )
+            buyer_testimony_entries.append(
+                weighting.TestimonyEntry(
+                    contribution, base_weight, market_actor.actor_type
+                )
+            )
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "buyer_relationship",
+                    "raw_value": f"reliability={row.reliability_rating}",
+                    "contribution": contribution,
+                    "weight": base_weight,
+                    "market_actor_id": market_actor.id,
+                }
+            )
+        
+        buyer_score = None
+        if buyer_testimony_entries:
+            pooled = weighting.pool_testimonies(buyer_testimony_entries)
+            buyer_score = pooled.pooled_score
+            for component in components:
+                if component["component_name"] == "buyer_relationship":
+                    component["pool_id"] = buyer_pool_id
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "buyer_relationship_pool",
+                    "raw_value": f"{len(buyer_testimony_entries)} buyer testimonies",
+                    "contribution": buyer_score,
+                    "weight": weighting.BUYER_WEIGHT,
+                    "pool_id": buyer_pool_id,
+                }
+            )
 
-            participant_scores.append({
-                "participant_type": participant_type,
-                "participant_name": participant_name,
-                "phone": participant.get("participant_phone"),
-                "responses": self._format_responses(
-                    stored_responses
-                ),
-                "raw_score": raw_score,
+        discipline_pool_id = uuid.uuid4()
+        discipline_contributions = []
+        for row in signals.discipline_proxies:
+            contribution = weighting.discipline_value(
+                row.consecutive_cycles,
+                row.last_contribution_date,
+                date.today(),
+            )
+            discipline_contributions.append(contribution)
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "discipline_proxy",
+                    "raw_value": f"{row.consecutive_cycles}_cycles",
+                    "contribution": contribution,
+                    "weight": weighting.DISCIPLINE_WEIGHT,
+                    "pool_id": discipline_pool_id,
+                }
+            )
+        discipline_score = self._append_pool_summary(
+            components,
+            "discipline_proxy",
+            discipline_contributions,
+            weighting.DISCIPLINE_WEIGHT,
+            discipline_pool_id,
+        )
+
+        settlement_pool_id = uuid.uuid4()
+        settlement_contributions = []
+        for row in signals.settlements:
+            contribution = weighting.settlement_value(row.estimated_value)
+            settlement_contributions.append(contribution)
+            components.append(
+                {
+                    "axis": "character",
+                    "component_name": "in_kind_settlement",
+                    "raw_value": f"value={row.estimated_value}",
+                    "contribution": contribution,
+                    "weight": weighting.SETTLEMENT_WEIGHT,
+                    "pool_id": settlement_pool_id,
+                }
+            )
+        settlement_score = self._append_pool_summary(
+            components,
+            "in_kind_settlement",
+            settlement_contributions,
+            weighting.SETTLEMENT_WEIGHT,
+            settlement_pool_id,
+        )
+
+        try:
+            character_score = weighting.combine_character_components(
+                testimony_score, buyer_score, discipline_score, settlement_score
+            )
+        except ValueError as exc:
+            raise InsufficientDataError(
+                f"Farmer {farmer_id} has no scoreable signals"
+            ) from exc
+
+        capacity_score = None
+        farms = await self.farmer_repository.get_farm_by_farmer_id(session, farmer_id)
+        if farms:
+            latest = await self.farm_activity_repository.get_latest_for_farm(
+                session, farms[0].id
+            )
+            if latest and latest.cultivation_continuity_score is not None:
+                capacity_score = weighting.normalize_capacity_score(
+                    latest.cultivation_continuity_score, farms[0].acreage
+                )
+                components.append(
+                    {
+                        "axis": "capacity",
+                        "component_name": "cultivation_continuity",
+                        "raw_value": str(latest.cultivation_continuity_score),
+                        "contribution": capacity_score,
+                        "weight": weighting.CAPACITY_AXIS_WEIGHT,
+                    }
+                )
+
+        final_score, axis_note = weighting.combine_axes(character_score, capacity_score)
+        decision, recommendation, amount = weighting.apply_decision_thresholds(final_score)
+        profile = await self.scoring_repository.create_score_profile(
+            session,
+            farmer_id,
+            character_score=character_score,
+            capacity_score=capacity_score,
+            final_score=final_score,
+            decision=decision,
+            recommended_amount=amount,
+        )
+        rows = list(
+            await self.scoring_repository.create_score_components(
+                session, profile.id, components
+            )
+        )
+        await self.audit_service.write_log(
+            session,
+            actor_type="system",
+            actor_id=None,
+            action="score_computed",
+            entity_type="score_profile",
+            entity_id=profile.id,
+            details={"final_score": final_score, "decision": decision},
+        )
+        return ScoreComputationResult(profile, rows, axis_note)
+
+    @staticmethod
+    def _append_pool_summary(
+        components: list[dict[str, Any]],
+        component_name: str,
+        contributions: list[float],
+        weight: float,
+        pool_id: uuid.UUID,
+    ) -> float | None:
+        if not contributions:
+            return None
+        score = sum(contributions) / len(contributions)
+        components.append(
+            {
+                "axis": "character",
+                "component_name": f"{component_name}_pool",
+                "raw_value": f"{len(contributions)} entries",
+                "contribution": score,
                 "weight": weight,
-                "weighted_score": round(weighted_score, 2),
-                "status": "received"
-            })
-
-            total_weighted += weighted_score
-            total_weight += weight
-
-        # -------------------------------------------------
-        # Timeout participants
-        # -------------------------------------------------
-
-        for participant in status.get("timeout", []):
-
-            participant_type = participant.get("participant_type")
-            participant_name = participant.get("participant_name")
-
-            weight = self.weighting_service.get_weight(
-                participant_type
-            )
-
-            participant_scores.append({
-                "participant_type": participant_type,
-                "participant_name": participant_name,
-                "phone": participant.get("participant_phone"),
-                "responses": [],
-                "raw_score": 0,
-                "weight": weight,
-                "weighted_score": 0,
-                "status": "timeout"
-            })
-
-            total_weight += weight
-
-        # -------------------------------------------------
-        # Final Trust Score
-        # -------------------------------------------------
-
-        if total_weight == 0:
-            trust_score = 0.0
-        else:
-            trust_score = round(
-                total_weighted / total_weight,
-                2
-            )
-
-        decision, recommendation, loan_amount = self._get_decision(
-            trust_score,
-            len(status.get("timeout", []))
+                "pool_id": pool_id,
+            }
         )
-
-        analysis = self._generate_analysis(
-            trust_score,
-            participant_scores,
-            decision
-        )
-
-        return {
-            "trust_score": trust_score,
-            "decision": decision,
-            "recommendation": recommendation,
-            "loan_amount_recommended_kes": loan_amount,
-            "participant_scores": participant_scores,
-            "analysis": analysis
-        }
-
-    def calculate_current_score(self, status: Dict) -> float:
-        """
-        Calculate current intermediate trust score based on received responses.
-        Pending participants are excluded, while timeout participants contribute 0 score.
-        """
-        total_weighted = 0.0
-        total_weight = 0.0
-
-        for participant in status.get("received", []):
-            participant_type = participant.get("participant_type")
-            stored_responses = participant.get("responses", [])
-            raw_score = self._calculate_raw_score(stored_responses)
-            weight = self.weighting_service.get_weight(participant_type)
-            total_weighted += raw_score * weight
-            total_weight += weight
-
-        for participant in status.get("timeout", []):
-            participant_type = participant.get("participant_type")
-            weight = self.weighting_service.get_weight(participant_type)
-            total_weight += weight
-
-        if total_weight == 0.0:
-            return 0.0
-        return round(total_weighted / total_weight, 2)
-
-    # ==========================================================
-    # Helpers
-    # ==========================================================
-
-    def _calculate_raw_score(
-        self,
-        responses: List[str]
-    ) -> float:
-        """
-        Calculate score from stored response strings.
-
-        Stored format:
-
-            CH1:YES
-            CH2:NO
-            CH3:UNSURE
-        """
-
-        if not responses:
-            return 0.0
-
-        total = 0
-
-        valid = 0
-
-        for response in responses:
-
-            try:
-                _, answer = response.split(":", 1)
-            except ValueError:
-                continue
-
-            valid += 1
-
-            answer = answer.upper()
-
-            if answer == "YES":
-                total += 100
-
-            elif answer == "UNSURE":
-                total += 50
-
-            else:
-                total += 0
-
-        if valid == 0:
-            return 0.0
-
-        return round(total / valid, 2)
-
-    def _format_responses(
-        self,
-        responses: List[str]
-    ) -> List[Dict]:
-        """
-        Convert stored response strings into dictionaries
-        expected by the API.
-
-        Example:
-
-        CH1:YES
-
-        becomes
-
-        {
-            "question_id": "CH1",
-            "answer": "YES"
-        }
-        """
-
-        formatted = []
-
-        for response in responses:
-
-            try:
-                question_id, answer = response.split(":", 1)
-            except ValueError:
-                continue
-
-            formatted.append({
-                "question_id": question_id,
-                "answer": answer
-            })
-
-        return formatted
-
-    def _get_decision(
-        self,
-        score: float,
-        timeout_count: int
-    ):
-
-        if timeout_count > 0:
-            return (
-                "REVIEW_REQUIRED",
-                "Incomplete community verification",
-                None
-            )
-
-        if score >= 75:
-            return (
-                "ELIGIBLE",
-                "APPROVE_LEVEL_2",
-                5000
-            )
-
-        if score >= 60:
-            return (
-                "ELIGIBLE",
-                "APPROVE_LEVEL_1",
-                3000
-            )
-
-        if score >= 45:
-            return (
-                "REVIEW_REQUIRED",
-                "Manual review required",
-                None
-            )
-
-        return (
-            "DECLINE",
-            "Insufficient community trust",
-            None
-        )
-
-    def _generate_analysis(
-        self,
-        score: float,
-        participant_scores: List[Dict],
-        decision: str
-    ) -> Dict:
-
-        key_drivers = []
-
-        risk_factors = []
-
-        for participant in participant_scores:
-
-            if participant["status"] == "timeout":
-                risk_factors.append(
-                    f"{participant['participant_type']} did not respond."
-                )
-                continue
-
-            if participant["raw_score"] >= 75:
-                key_drivers.append(
-                    f"{participant['participant_type']} ({participant['participant_name']}) provided strong positive verification."
-                )
-
-            elif participant["raw_score"] < 50:
-                risk_factors.append(
-                    f"{participant['participant_type']} provided weak verification."
-                )
-
-        if not key_drivers:
-            key_drivers.append(
-                "No strong positive community endorsements."
-            )
-
-        if not risk_factors:
-            risk_factors.append(
-                "No major verification risks identified."
-            )
-
-        if decision == "ELIGIBLE":
-
-            summary = "Strong community verification."
-
-            explanation = (
-                f"The farmer achieved a trust score of "
-                f"{score:.0f}/100 based on weighted community responses."
-            )
-
-        elif decision == "REVIEW_REQUIRED":
-
-            summary = "Manual review recommended."
-
-            explanation = (
-                f"The farmer achieved a trust score of "
-                f"{score:.0f}/100. Additional review is recommended due "
-                f"to incomplete or mixed community verification."
-            )
-
-        else:
-
-            summary = "Community verification insufficient."
-
-            explanation = (
-                f"The farmer achieved a trust score of "
-                f"{score:.0f}/100 which falls below the approval threshold."
-            )
-
-        return {
-            "summary": summary,
-            "explanation": explanation,
-            "key_drivers": key_drivers,
-            "risk_factors": risk_factors
-        }
+        return score

@@ -1,0 +1,16 @@
+attribute,value,character_score,capacity_score,final_score,decision,recommended_amount,matches_baseline
+baseline,reference,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+control,baseline repeat,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+gender,male,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+age,born 1960,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+age,born 2004 (youth),63.75,50.74,58.55,REVIEW_REQUIRED,,True
+name,Luo name,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+name,Kalenjin name,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+name,Somali name,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+region,Turkana (text only),63.75,50.74,58.55,REVIEW_REQUIRED,,True
+region,Kisumu (text only),63.75,50.74,58.55,REVIEW_REQUIRED,,True
+farming_type,livestock,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+years_farming,1 year,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+years_farming,30 years,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+acreage,0.25 acres,63.75,50.74,58.55,REVIEW_REQUIRED,,True
+acreage,12 acres,63.75,50.74,58.55,REVIEW_REQUIRED,,True
