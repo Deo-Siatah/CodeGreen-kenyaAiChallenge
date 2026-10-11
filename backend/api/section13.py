@@ -21,6 +21,9 @@ from schemas.section13 import (
     VerificationResultResponse,
     VerificationStartRequest,
 )
+from schemas.farmers import FarmersListResponse
+from schemas.network import NetworkResponse
+from schemas.breakdown import BreakdownResponse
 from schemas.institution import InstitutionCreate
 from schemas.loan import LoanCreate
 from services.loan_service import (
@@ -80,7 +83,7 @@ def _columns(obj) -> dict:
     return {column.name: getattr(obj, column.name) for column in obj.__table__.columns}
 
 
-@router.post("/farmers")
+@router.post("/farmers", response_model=dict)
 async def create_farmer(
     payload: FarmerRouteCreate,
     session: AsyncSession = Depends(get_db_session),
@@ -94,7 +97,7 @@ async def create_farmer(
         raise HTTPException(status_code=409, detail=str(exc))
 
 
-@router.post("/farmers/{farmer_id}/farm")
+@router.post("/farmers/{farmer_id}/farm", response_model=dict)
 async def create_farm(
     farmer_id: UUID,
     payload: FarmRouteCreate,
@@ -106,7 +109,7 @@ async def create_farm(
     return _columns(result)
 
 
-@router.get("/farmers/{farmer_id}")
+@router.get("/farmers/{farmer_id}", response_model=dict)
 async def get_farmer(
     farmer_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -124,7 +127,7 @@ async def _create_trust(payload, service_method, session, service):
     return _columns(result)
 
 
-@router.post("/trust/sources")
+@router.post("/trust/sources", response_model=dict)
 async def create_trust_source(
     payload: TrustSourceCreate,
     session=Depends(get_db_session),
@@ -133,7 +136,7 @@ async def create_trust_source(
     return await _create_trust(payload, service.create_trust_source, session, service)
 
 
-@router.post("/trust/institutions")
+@router.post("/trust/institutions", response_model=dict)
 async def create_institution(
     payload: InstitutionCreate,
     session=Depends(get_db_session),
@@ -142,7 +145,7 @@ async def create_institution(
     return await _create_trust(payload, service.create_institution, session, service)
 
 
-@router.post("/trust/social-groups")
+@router.post("/trust/social-groups", response_model=dict)
 async def create_social_group(
     payload: SocialGroupCreate,
     session=Depends(get_db_session),
@@ -151,7 +154,7 @@ async def create_social_group(
     return await _create_trust(payload, service.create_social_group, session, service)
 
 
-@router.post("/trust/market-actors")
+@router.post("/trust/market-actors", response_model=dict)
 async def create_market_actor(
     payload: MarketActorCreate,
     session=Depends(get_db_session),
@@ -166,7 +169,7 @@ async def _link(service_method, farmer_id, payload, session):
     return _columns(result)
 
 
-@router.post("/farmers/{farmer_id}/link-trust-source")
+@router.post("/farmers/{farmer_id}/link-trust-source", response_model=dict)
 async def link_trust_source(
     farmer_id: UUID,
     payload: LinkRequest,
@@ -176,7 +179,7 @@ async def link_trust_source(
     return await _link(service.link_trust_source, farmer_id, payload, session)
 
 
-@router.post("/farmers/{farmer_id}/link-institution")
+@router.post("/farmers/{farmer_id}/link-institution", response_model=dict)
 async def link_institution(
     farmer_id: UUID,
     payload: LinkRequest,
@@ -186,7 +189,7 @@ async def link_institution(
     return await _link(service.link_institution, farmer_id, payload, session)
 
 
-@router.post("/farmers/{farmer_id}/link-social-group")
+@router.post("/farmers/{farmer_id}/link-social-group", response_model=dict)
 async def link_social_group(
     farmer_id: UUID,
     payload: LinkRequest,
@@ -196,7 +199,7 @@ async def link_social_group(
     return await _link(service.link_social_group, farmer_id, payload, session)
 
 
-@router.post("/farmers/{farmer_id}/link-market-actor")
+@router.post("/farmers/{farmer_id}/link-market-actor", response_model=dict)
 async def link_market_actor(
     farmer_id: UUID,
     payload: LinkRequest,
@@ -206,7 +209,7 @@ async def link_market_actor(
     return await _link(service.link_market_actor, farmer_id, payload, session)
 
 
-@router.post("/verify/start")
+@router.post("/verify/start", response_model=dict)
 async def start_verification(
     payload: VerificationStartRequest,
     session=Depends(get_db_session),
@@ -221,7 +224,7 @@ async def start_verification(
     }
 
 
-@router.post("/verify/{session_id}/respond/{participant_id}")
+@router.post("/verify/{session_id}/respond/{participant_id}", response_model=dict)
 async def submit_response(
     session_id: UUID,
     participant_id: UUID,
@@ -251,7 +254,7 @@ async def submit_response(
     return result
 
 
-@router.post("/verify/{session_id}/timeout/{participant_id}")
+@router.post("/verify/{session_id}/timeout/{participant_id}", response_model=dict)
 async def timeout_participant(
     session_id: UUID,
     participant_id: UUID,
@@ -268,7 +271,7 @@ async def timeout_participant(
     return result
 
 
-@router.get("/verify/{session_id}/status")
+@router.get("/verify/{session_id}/status", response_model=dict)
 async def verification_status(
     session_id: UUID,
     session=Depends(get_db_session),
@@ -374,7 +377,7 @@ async def verification_explanation(
         ) from exc
 
 
-@router.post("/farmers/{farmer_id}/inkind-settlement")
+@router.post("/farmers/{farmer_id}/inkind-settlement", response_model=dict)
 async def create_settlement(
     farmer_id: UUID,
     payload: SettlementRequest,
@@ -392,7 +395,7 @@ def get_loan_service():
     return factory()
 
 
-@router.post("/loans")
+@router.post("/loans", response_model=dict)
 async def create_loan(
     payload: LoanCreate,
     session: AsyncSession = Depends(get_db_session),
@@ -424,7 +427,7 @@ async def create_loan(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-@router.post("/loans/{loan_id}/disburse")
+@router.post("/loans/{loan_id}/disburse", response_model=dict)
 async def mark_disbursed(
     loan_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -443,7 +446,7 @@ async def mark_disbursed(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-@router.post("/loans/{loan_id}/repay")
+@router.post("/loans/{loan_id}/repay", response_model=dict)
 async def repay_loan(
     loan_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -462,7 +465,7 @@ async def repay_loan(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-@router.post("/loans/{loan_id}/default")
+@router.post("/loans/{loan_id}/default", response_model=dict)
 async def default_loan(
     loan_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -481,7 +484,7 @@ async def default_loan(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
-@router.get("/loans")
+@router.get("/loans", response_model=list)
 async def get_loans(
     farmer_id: UUID | None = None,
     status: str | None = None,
@@ -493,5 +496,209 @@ async def get_loans(
     repo = LoanRepository()
     loans = await repo.get_loans(session, farmer_id, status)
     return [_columns(loan) for loan in loans]
+
+
+@router.get("/farmers", response_model=FarmersListResponse)
+async def get_farmers(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get a paginated list of farmers with minimal data."""
+    from repositories.farmer_repository import FarmerRepository
+    
+    repo = FarmerRepository()
+    farmers, total = await repo.get_farmers_paginated(session, limit, offset)
+    return {
+        "items": [
+            {
+                "id": str(farmer.id),
+                "full_name": farmer.full_name,
+                "county": farmer.county,
+                "created_at": farmer.created_at.isoformat(),
+                "current_score": (
+                    {
+                        "final_score": profile.final_score,
+                        "decision": profile.decision,
+                        "recommended_amount": profile.recommended_amount,
+                    }
+                    if profile else None
+                )
+            }
+            for farmer, profile in farmers
+        ],
+        "total": total,
+    }
+
+
+@router.get("/farmers/{farmer_id}/network", response_model=NetworkResponse)
+async def get_farmer_network(
+    farmer_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get everything needed to redraw the graph for a farmer."""
+    from repositories.farmer_repository import FarmerRepository
+    from repositories.trust_repository import TrustRepository
+    from repositories.verification_repository import VerificationRepository
+    from repositories.scoring_repository import ScoringRepository
+    from repositories.loan_repository import LoanRepository
+    
+    # Check if farmer exists
+    farmer_repo = FarmerRepository()
+    farmer = await farmer_repo.get_farmer(session, farmer_id)
+    if farmer is None:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    
+    # Get all related data
+    trust_repo = TrustRepository()
+    verification_repo = VerificationRepository()
+    scoring_repo = ScoringRepository()
+    loan_repo = LoanRepository()
+    
+    farms = await farmer_repo.get_farms(session, farmer_id)
+    trust_sources = await trust_repo.get_farmer_trust_sources(session, farmer_id)
+    market_actors = await trust_repo.get_farmer_market_actors(session, farmer_id)
+    social_groups = await trust_repo.get_farmer_social_groups(session, farmer_id)
+    latest_session = await verification_repo.get_latest_session(session, farmer_id)
+    current_score = await scoring_repo.get_current_score(session, farmer_id)
+    loans = await loan_repo.get_farmer_loans(session, farmer_id)
+    
+    # Mask phone numbers
+    def mask_phone(phone):
+        if not phone:
+            return None
+        if len(phone) >= 8:
+            return f"{phone[:4]}*****{phone[-3:]}"
+        return phone
+    
+    # Get credibility scores without creating rows
+    credibility_scores = {}
+    for trust_source in trust_sources:
+        credibility_scores[str(trust_source.id)] = 1.0  # Default to 1.0 when no history
+    
+    for market_actor in market_actors:
+        credibility_scores[str(market_actor.id)] = 1.0  # Default to 1.0 when no history
+    
+    return {
+        "farmer": {
+            "id": str(farmer.id),
+            "full_name": farmer.full_name,
+            "county": farmer.county,
+        },
+        "farms": [
+            {
+                "id": str(farm.id),
+                "acreage": farm.acreage,
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+            }
+            for farm in farms
+        ],
+        "trust_sources": [
+            {
+                "id": str(ts.id),
+                "name": ts.full_name,
+                "category": ts.category,
+                "phone_masked": mask_phone(ts.phone),
+                "credibility_score": credibility_scores.get(str(ts.id), 1.0),
+            }
+            for ts in trust_sources
+        ],
+        "market_actors": [
+            {
+                "id": str(ma.id),
+                "name": ma.name,
+                "actor_type": ma.actor_type,
+                "phone_masked": mask_phone(ma.phone),
+                "credibility_score": credibility_scores.get(str(ma.id), 1.0),
+            }
+            for ma in market_actors
+        ],
+        "social_groups": [
+            {
+                "id": str(sg.id),
+                "name": sg.name,
+                "group_type": sg.group_type,
+            }
+            for sg in social_groups
+        ],
+        "latest_session": (
+            {
+                "id": str(latest_session.id),
+                "status": latest_session.status,
+                "participants": [
+                    {
+                        "id": str(p.id),
+                        "participant_type": p.participant_type,
+                        "participant_id": p.participant_id,
+                        "responded": p.responded_at.isoformat() if p.responded_at else None,
+                    }
+                    for p in latest_session.participants
+                ]
+            }
+            if latest_session else None
+        ),
+        "current_score": (
+            {
+                "id": str(current_score.id),
+                "character_score": current_score.character_score,
+                "capacity_score": current_score.capacity_score,
+                "final_score": current_score.final_score,
+                "decision": current_score.decision,
+                "recommended_amount": current_score.recommended_amount,
+            }
+            if current_score else None
+        ),
+        "loans": [
+            {
+                "id": str(loan.id),
+                "amount": loan.amount,
+                "status": loan.status,
+                "applied_at": loan.created_at.isoformat(),
+            }
+            for loan in loans
+        ],
+    }
+
+
+@router.get("/verify/{session_id}/breakdown", response_model=BreakdownResponse)
+async def get_verification_breakdown(
+    session_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get score breakdown for a verification session."""
+    from repositories.verification_repository import VerificationRepository
+    from repositories.scoring_repository import ScoringRepository
+    
+    verification_repo = VerificationRepository()
+    scoring_repo = ScoringRepository()
+    
+    verification_session = await verification_repo.get_session(session, session_id)
+    if verification_session is None:
+        raise HTTPException(status_code=404, detail="Verification session not found")
+    
+    profile = await scoring_repo.get_current_score(session, verification_session.farmer_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Score not found")
+    
+    components = await scoring_repo.get_score_components(session, profile.id)
+    
+    return {
+        "profile": _columns(profile),
+        "axis_note": "combined" if profile.capacity_score is not None else "capacity axis unavailable - character only",
+        "components": [
+            {
+                "axis": component.axis,
+                "component_name": component.component_name,
+                "raw_value": component.raw_value,
+                "contribution": component.contribution,
+                "weight": component.weight,
+                "pool_id": str(component.pool_id) if component.pool_id else None,
+                "trust_source_id": str(component.trust_source_id) if component.trust_source_id else None,
+                "market_actor_id": str(component.market_actor_id) if component.market_actor_id else None,
+            }
+            for component in components
+        ],
+    }
 
 

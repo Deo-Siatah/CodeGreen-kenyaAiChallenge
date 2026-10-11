@@ -127,3 +127,45 @@ class FarmerRepository:
         )
         result = await session.execute(stmt)
         return result.scalars().all()
+
+    async def get_farmers_paginated(
+        self, session: AsyncSession, limit: int, offset: int
+    ) -> tuple[Sequence[tuple[Farmer, Any]], int]:
+        """Get paginated list of farmers with their current score profile.
+        
+        Returns:
+            A tuple of (farmers_with_scores, total_count)
+        """
+        from models.scoring import ScoreProfile
+        
+        # Get total count
+        count_stmt = select(text("count(*)")).select_from(Farmer)
+        count_result = await session.execute(count_stmt)
+        total = count_result.scalar()
+        
+        # Get paginated farmers with their current score
+        stmt = (
+            select(Farmer, ScoreProfile)
+            .outerjoin(
+                ScoreProfile,
+                ScoreProfile.farmer_id == Farmer.id,
+            )
+            .where(ScoreProfile.is_current == True)
+            .order_by(Farmer.created_at.desc(), Farmer.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(stmt)
+        return result.all(), total
+
+    async def get_farms(
+        self, session: AsyncSession, farmer_id: uuid.UUID | str
+    ) -> Sequence[Farm]:
+        """Get all farms for a farmer."""
+        stmt = (
+            select(Farm)
+            .where(Farm.farmer_id == farmer_id)
+            .order_by(Farm.created_at.desc(), Farm.id)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()

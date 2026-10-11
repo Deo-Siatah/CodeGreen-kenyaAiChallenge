@@ -39,7 +39,7 @@ class LinkRequest(BaseModel):
 
 class TrustSourceResponse(BaseModel):
     participant_type: Literal["trust_source"]
-    rating: int = Field(ge=1, le=4)
+    rating: int | None = Field(ge=1, le=4, default=None)
     comments: str | None = None
     personal_knowledge_flag: bool = True
 

@@ -116,6 +116,20 @@ class TrustRepository:
         )
         return list(result.scalars().all())
 
+    async def get_farmer_trust_sources(
+        self, session: AsyncSession, farmer_id: uuid.UUID | str
+    ) -> list[TrustSource]:
+        """Get all trust sources linked to a farmer."""
+        result = await session.execute(
+            select(TrustSource)
+            .join(
+                FarmerTrustSourceLink,
+                FarmerTrustSourceLink.trust_source_id == TrustSource.id,
+            )
+            .where(FarmerTrustSourceLink.farmer_id == farmer_id)
+        )
+        return list(result.scalars().all())
+
     # ------------------------------------------------------------------
     # Links
     # ------------------------------------------------------------------

@@ -66,3 +66,13 @@ class LoanRepository:
         
         await session.flush()
         return loan
+
+    async def get_farmer_loans(
+        self, 
+        session: AsyncSession, 
+        farmer_id: uuid.UUID | str
+    ) -> list[Loan]:
+        """Get all loans for a specific farmer."""
+        query = select(Loan).where(Loan.farmer_id == farmer_id)
+        result = await session.execute(query)
+        return list(result.scalars().all())
