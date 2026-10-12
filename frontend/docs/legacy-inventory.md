@@ -43,6 +43,13 @@ This document inventories the existing frontend components before cleanup. The l
 3. **Basic Styling** → Tailwind CSS and custom styles to be preserved
 4. **Static Assets** → Hero images and icons that are still referenced
 
+## PORT Ideas Implementation Plan
+
+| PORT Idea | Implementation Target | Notes |
+|-----------|----------------------|-------|
+| Kiswahili Toggle | U6: Explanation language selector | Language toggle from FarmerDetail.tsx will be enhanced to support proper translations |
+| Testifier Concept | U7: Verifier credibility rings | Testifier credibility metrics from TestifiersView.tsx will be adapted for new system |
+
 ## REPLACE (new UI covers this functionality)
 
 1. Dashboard layout and metrics display
