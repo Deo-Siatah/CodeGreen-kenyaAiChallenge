@@ -30,6 +30,7 @@ from services.loan_service import (
     NoScoreError,
     LoanNotEligibleError,
     AmountExceedsRecommendationError,
+    OpenLoanExistsError,
     LoanNotFoundError,
     InvalidLoanStateError,
     LoanService,
@@ -419,6 +420,8 @@ async def create_loan(
         raise HTTPException(status_code=422, detail=str(exc))
     except AmountExceedsRecommendationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except OpenLoanExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LoanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except InvalidLoanStateError as exc:
@@ -557,9 +560,14 @@ async def get_farmer_network(
     
     farms = await farmer_repo.get_farms(session, farmer_id)
     trust_sources = await trust_repo.get_farmer_trust_sources(session, farmer_id)
-    market_actors = await trust_repo.get_farmer_market_actors(session, farmer_id)
-    social_groups = await trust_repo.get_farmer_social_groups(session, farmer_id)
+    market_actors = await trust_repo.get_market_actors_for_farmer(session, farmer_id)
+    social_groups = await trust_repo.get_social_groups_for_farmer(session, farmer_id)
     latest_session = await verification_repo.get_latest_session(session, farmer_id)
+    session_participants = (
+        await verification_repo.list_participants_for_session(session, latest_session.id)
+        if latest_session is not None
+        else []
+    )
     current_score = await scoring_repo.get_current_score(session, farmer_id)
     loans = await loan_repo.get_farmer_loans(session, farmer_id)
     
@@ -633,7 +641,7 @@ async def get_farmer_network(
                         "participant_id": p.participant_id,
                         "responded": p.responded_at.isoformat() if p.responded_at else None,
                     }
-                    for p in latest_session.participants
+                    for p in session_participants
                 ]
             }
             if latest_session else None
@@ -654,7 +662,7 @@ async def get_farmer_network(
                 "id": str(loan.id),
                 "amount": loan.amount,
                 "status": loan.status,
-                "applied_at": loan.created_at.isoformat(),
+                "applied_at": loan.applied_at.isoformat(),
             }
             for loan in loans
         ],

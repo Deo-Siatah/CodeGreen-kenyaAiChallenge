@@ -22,7 +22,7 @@ class TrustSource(BaseModel):
 class MarketActor(BaseModel):
     id: UUID
     name: str
-    actor_type: str
+    actor_type: Optional[str] = None
     phone_masked: Optional[str]
     credibility_score: float
 
@@ -30,7 +30,7 @@ class MarketActor(BaseModel):
 class SocialGroup(BaseModel):
     id: UUID
     name: str
-    group_type: str
+    group_type: Optional[str] = None
 
 
 class Participant(BaseModel):

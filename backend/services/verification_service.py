@@ -288,9 +288,10 @@ class VerificationService:
                 )
             
             try:
-                score_result = await compute_score(
+                computed = await compute_score(
                     session, verification_session.farmer_id
                 )
+                score_result = _score_result_dict(computed)
                 session_status = "completed"
             except InsufficientDataError:
                 # Handle case where no scoreable signals exist (all participants timed out or said "no personal knowledge")
@@ -310,3 +311,26 @@ def _payload_value(payload: Any, name: str, default: Any = None) -> Any:
     if isinstance(payload, Mapping):
         return payload.get(name, default)
     return getattr(payload, name, default)
+
+
+def _score_result_dict(result: Any) -> Any:
+    """Flatten a score computation into JSON-safe data.
+
+    `respond`/`timeout` declare `response_model=dict`. Returning the
+    `ScoreComputationResult` dataclass (which wraps an ORM row) leaves FastAPI
+    to guess how to encode it, and a non-dict value can fail response
+    validation *after* the participant's answer was committed. The client only
+    needs the score summary here; it fetches `/result` for the full profile.
+    """
+    profile = getattr(result, "profile", None)
+    if profile is None:
+        return result if isinstance(result, (dict, list, str, int, float, bool)) else None
+    return {
+        "id": str(profile.id),
+        "character_score": profile.character_score,
+        "capacity_score": profile.capacity_score,
+        "final_score": profile.final_score,
+        "decision": profile.decision,
+        "recommended_amount": profile.recommended_amount,
+        "axis_note": getattr(result, "axis_note", None),
+    }

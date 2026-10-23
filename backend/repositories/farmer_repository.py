@@ -20,7 +20,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.farmer import Farm, Farmer
@@ -143,14 +143,19 @@ class FarmerRepository:
         count_result = await session.execute(count_stmt)
         total = count_result.scalar()
         
-        # Get paginated farmers with their current score
+        # Left join, not an inner join: a farmer with no score yet is still a
+        # portfolio row. The old `.where(is_current == True)` silently turned
+        # the outer join into an inner join and made `total` disagree with the
+        # rows returned.
         stmt = (
             select(Farmer, ScoreProfile)
             .outerjoin(
                 ScoreProfile,
-                ScoreProfile.farmer_id == Farmer.id,
+                and_(
+                    ScoreProfile.farmer_id == Farmer.id,
+                    ScoreProfile.is_current.is_(True),
+                ),
             )
-            .where(ScoreProfile.is_current == True)
             .order_by(Farmer.created_at.desc(), Farmer.id)
             .limit(limit)
             .offset(offset)

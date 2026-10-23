@@ -17,6 +17,7 @@ except Exception as exc:
 
 from core.database import dispose_engines, verify_db_connection  # noqa: E402
 from api.section13 import router as section13_router  # noqa: E402
+from api.stats import router as stats_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -110,4 +111,11 @@ async def integrity_error_handler(request: Request, exc: IntegrityError):
     raise HTTPException(status_code=409, detail="Request conflicts with existing data")
 
 
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Basic health check endpoint for monitoring and test scripts."""
+    return {"status": "ok"}
+
+
 app.include_router(section13_router)
+app.include_router(stats_router)

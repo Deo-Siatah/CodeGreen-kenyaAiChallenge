@@ -66,6 +66,27 @@ class VerificationRepository:
     ) -> VerificationSession | None:
         return await session.get(VerificationSession, session_id)
 
+    async def get_latest_session(
+        self, session: AsyncSession, farmer_id: uuid.UUID | str
+    ) -> VerificationSession | None:
+        """Newest session for a farmer, or None if they have never been verified.
+
+        `started_at` is the meaningful clock (a pending session still has one,
+        created by the server default); `id` is an explicit tiebreak so two
+        sessions in one transaction keep a stable order.
+        """
+        stmt = (
+            select(VerificationSession)
+            .where(VerificationSession.farmer_id == farmer_id)
+            .order_by(
+                VerificationSession.started_at.desc(),
+                VerificationSession.id.desc(),
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_participant(
         self, session: AsyncSession, participant_id: uuid.UUID | str
     ) -> VerificationParticipant | None:
