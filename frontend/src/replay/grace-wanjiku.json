@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "label": "Grace Wanjiku - Nakuru",
+  "description": "Real backend snapshot recorded on 2026-10-23.",
+  "recordedAt": "2026-10-23T09:21:59.729Z",
+  "source": "http://localhost:8000/api/farmers/d858d2ad-8602-4d3a-bf75-c9e67fc24093/network",
+  "farmer_id": "d858d2ad-8602-4d3a-bf75-c9e67fc24093",
+  "network": {
+    "farmer": {
+      "id": "d858d2ad-8602-4d3a-bf75-c9e67fc24093",
+      "full_name": "Grace Wanjiku",
+      "county": "Nakuru"
+    },
+    "farms": [
+      {
+        "id": "59207664-9688-4a79-9c5b-cb3e1752c858",
+        "acreage": 2.4,
+        "latitude": -0.25,
+        "longitude": 36.18
+      }
+    ],
+    "trust_sources": [
+      {
+        "id": "ea65d8b3-185b-4056-a707-fa27bdae0e1c",
+        "name": "Nakuru Chief",
+        "category": "Chief",
+        "phone_masked": "+254*****000",
+        "credibility_score": 1
+      }
+    ],
+    "market_actors": [
+      {
+        "id": "628425a9-ecb7-4b32-80c8-0ed6d3020f0a",
+        "name": "Nakuru Produce Buyer",
+        "actor_type": "Buyer",
+        "phone_masked": "+254*****000",
+        "credibility_score": 1
+      }
+    ],
+    "social_groups": [
+      {
+        "id": "50470b30-5b17-441d-b733-06d90065a65e",
+        "name": "Umoja Women's Group",
+        "group_type": "Chama"
+      }
+    ],
+    "latest_session": {
+      "id": "7256d53e-8aa2-4c84-a0e3-c8cc0a3ed2c3",
+      "status": "pending",
+      "participants": [
+        {
+          "id": "43891c2f-56f0-4408-a7e0-8199b94b12cb",
+          "participant_type": "market_actor",
+          "participant_id": "628425a9-ecb7-4b32-80c8-0ed6d3020f0a",
+          "responded": "2026-10-22T19:12:25.783602Z"
+        },
+        {
+          "id": "c417edac-b160-426a-ac31-a48f976b69b7",
+          "participant_type": "trust_source",
+          "participant_id": "ea65d8b3-185b-4056-a707-fa27bdae0e1c",
+          "responded": "2026-10-22T19:12:25.783602Z"
+        },
+        {
+          "id": "da89efa7-cf0f-413b-b6a7-647f65f63d30",
+          "participant_type": "social_group",
+          "participant_id": "50470b30-5b17-441d-b733-06d90065a65e",
+          "responded": "2026-10-22T19:12:25.783602Z"
+        }
+      ]
+    },
+    "current_score": {
+      "id": "aaa48337-1fb9-4cb0-b63e-5458aee1ccbb",
+      "character_score": 95,
+      "capacity_score": 82,
+      "final_score": 89.8,
+      "decision": "ELIGIBLE",
+      "recommended_amount": 5000
+    },
+    "loans": [
+      {
+        "id": "4fd613fd-2433-483d-aa3f-fb4e6f8a8791",
+        "amount": 5000,
+        "status": "repaid",
+        "applied_at": "2026-10-22T19:16:21.956291Z"
+      }
+    ]
+  },
+  "breakdown": {
+    "profile": {
+      "id": "aaa48337-1fb9-4cb0-b63e-5458aee1ccbb",
+      "farmer_id": "d858d2ad-8602-4d3a-bf75-c9e67fc24093",
+      "version": 1,
+      "character_score": 95.0,
+      "capacity_score": 82.0,
+      "final_score": 89.8,
+      "decision": "ELIGIBLE",
+      "recommended_amount": 5000.0,
+      "computed_at": "2026-10-22T19:12:25.783602Z",
+      "is_current": true,
+      "created_at": "2026-10-22T19:12:25.783602Z",
+      "updated_at": "2026-10-22T19:12:25.783602Z"
+    },
+    "axis_note": "combined",
+    "components": [
+      {
+        "axis": "character",
+        "component_name": "testimony_pool",
+        "raw_value": "1 testimonies",
+        "contribution": 100.0,
+        "weight": 0.15,
+        "pool_id": "6b8632a3-734f-4e3c-b203-c37b34e64e4e",
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "discipline_proxy",
+        "raw_value": "6_cycles",
+        "contribution": 90.0,
+        "weight": 0.35,
+        "pool_id": "7bfdcbfb-988e-4178-ac56-83f5775bbf87",
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "testimony",
+        "raw_value": "rating=4",
+        "contribution": 400.0,
+        "weight": 4.0,
+        "pool_id": "6b8632a3-734f-4e3c-b203-c37b34e64e4e",
+        "trust_source_id": "ea65d8b3-185b-4056-a707-fa27bdae0e1c",
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "in_kind_settlement_pool",
+        "raw_value": "1 entries",
+        "contribution": 92.48,
+        "weight": 0.2,
+        "pool_id": "209229c6-2689-4e39-98fc-69e4190bbbff",
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "buyer_relationship_pool",
+        "raw_value": "1 buyer testimonies",
+        "contribution": 100.0,
+        "weight": 0.3,
+        "pool_id": "9c0a9c7a-a7e9-4bad-828b-89d5c8a62dc9",
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "discipline_proxy_pool",
+        "raw_value": "1 entries",
+        "contribution": 90.0,
+        "weight": 0.35,
+        "pool_id": "7bfdcbfb-988e-4178-ac56-83f5775bbf87",
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "buyer_relationship",
+        "raw_value": "reliability=4",
+        "contribution": 400.0,
+        "weight": 4.0,
+        "pool_id": "9c0a9c7a-a7e9-4bad-828b-89d5c8a62dc9",
+        "trust_source_id": null,
+        "market_actor_id": "628425a9-ecb7-4b32-80c8-0ed6d3020f0a"
+      },
+      {
+        "axis": "capacity",
+        "component_name": "cultivation_continuity",
+        "raw_value": "82.0",
+        "contribution": 82.0,
+        "weight": 0.4,
+        "pool_id": null,
+        "trust_source_id": null,
+        "market_actor_id": null
+      },
+      {
+        "axis": "character",
+        "component_name": "in_kind_settlement",
+        "raw_value": "value=5000.0",
+        "contribution": 92.48,
+        "weight": 0.2,
+        "pool_id": "209229c6-2689-4e39-98fc-69e4190bbbff",
+        "trust_source_id": null,
+        "market_actor_id": null
+      }
+    ]
+  }
+}

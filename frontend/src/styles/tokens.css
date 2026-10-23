@@ -1,0 +1,188 @@
+/* Fonts are self-hosted and imported from src/main.tsx. */
+
+/* Design Tokens for Hifadhi - light "day harvest" theme */
+
+:root {
+  color-scheme: light;
+
+  /* Background colors */
+  --background: 40 30% 98%;
+  --foreground: 160 25% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 160 25% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 160 25% 10%;
+
+  /* Primary colors */
+  --primary: 142 68% 29%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary colors */
+  --secondary: 150 12% 93%;
+  --secondary-foreground: 160 22% 14%;
+
+  /* Muted colors */
+  --muted: 150 12% 93%;
+  --muted-foreground: 160 8% 38%;
+
+  /* Accent colors */
+  --accent: 150 14% 90%;
+  --accent-foreground: 160 22% 14%;
+
+  /* Destructive colors */
+  --destructive: 0 72% 44%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Border and input colors */
+  --border: 160 10% 80%;
+  --input: 160 10% 80%;
+  --ring: 142 68% 29%;
+
+  /* Custom colors for the day harvest theme */
+  --canvas: 45 25% 97%;
+  --node-glow: 142 66% 34%;
+  --edge-line: 160 12% 52%;
+  --text-primary: 160 25% 10%;
+  --text-secondary: 160 8% 38%;
+
+  /* Node colours per kind */
+  --kind-farmer: 142 65% 32%;
+  --kind-farm: 84 60% 34%;
+  --kind-trust-source: 199 75% 40%;
+  --kind-market-actor: 35 85% 42%;
+  --kind-social-group: 265 60% 48%;
+  --kind-loan: 45 80% 38%;
+
+  /* Node states */
+  --state-ghost: 210 12% 55%;
+  --state-pending: 199 70% 44%;
+  --state-responded-ember: 20 82% 46%;
+  --state-responded-gold: 95 60% 36%;
+  --state-timedout: 210 10% 48%;
+
+  /* Rating colours */
+  --rating-1: 20 82% 45%;
+  --rating-2: 45 85% 38%;
+  --rating-3: 70 65% 35%;
+  --rating-4: 95 60% 33%;
+
+  /* Decisions */
+  --decision-good: 142 65% 30%;
+  --decision-warn: 35 85% 38%;
+  --decision-bad: 0 70% 44%;
+
+  /* Edges */
+  --edge-evidence: 142 66% 34%;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Background colors */
+  --background: 0 0% 3%;
+  --foreground: 210 40% 98%;
+  --card: 0 0% 3%;
+  --card-foreground: 210 40% 98%;
+  --popover: 0 0% 3%;
+  --popover-foreground: 210 40% 98%;
+
+  /* Primary colors */
+  --primary: 142 76% 36%;
+  --primary-foreground: 210 40% 98%;
+
+  /* Secondary colors */
+  --secondary: 0 0% 15%;
+  --secondary-foreground: 210 40% 98%;
+
+  /* Muted colors */
+  --muted: 0 0% 15%;
+  --muted-foreground: 217 10% 64%;
+
+  /* Accent colors */
+  --accent: 0 0% 15%;
+  --accent-foreground: 210 40% 98%;
+
+  /* Destructive colors */
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Border and input colors */
+  --border: 217 10% 64%;
+  --input: 217 10% 64%;
+  --ring: 142 76% 36%;
+
+  /* Custom colors for the night harvest theme */
+  --canvas: 0 0% 3%;
+  --node-glow: 142 76% 56%;
+  --edge-line: 217 10% 64%;
+  --text-primary: 210 40% 98%;
+  --text-secondary: 217 10% 64%;
+
+  /* Node colours per kind */
+  --kind-farmer: 142 76% 45%;
+  --kind-farm: 84 62% 50%;
+  --kind-trust-source: 199 80% 56%;
+  --kind-market-actor: 35 90% 55%;
+  --kind-social-group: 265 70% 64%;
+  --kind-loan: 45 82% 56%;
+
+  /* Node states */
+  --state-ghost: 210 18% 62%;
+  --state-pending: 199 70% 62%;
+  --state-responded-ember: 20 85% 55%;
+  --state-responded-gold: 95 72% 55%;
+  --state-timedout: 210 10% 46%;
+
+  /* Rating colours */
+  --rating-1: 20 85% 55%;
+  --rating-2: 45 85% 55%;
+  --rating-3: 70 75% 52%;
+  --rating-4: 95 72% 55%;
+
+  /* Decisions */
+  --decision-good: 142 70% 46%;
+  --decision-warn: 45 85% 55%;
+  --decision-bad: 0 74% 56%;
+
+  /* Edges */
+  --edge-evidence: 142 76% 56%;
+}
+
+/* Font family mappings */
+.font-sans {
+  font-family: "Hanken Grotesk", sans-serif;
+}
+
+.font-serif {
+  font-family: "Fraunces", serif;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* Base styles */
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Custom utility classes */
+.text-glow {
+  text-shadow: 0 0 10px hsl(var(--node-glow));
+}
+
+.node-glow {
+  filter: drop-shadow(0 0 8px hsl(var(--node-glow)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
