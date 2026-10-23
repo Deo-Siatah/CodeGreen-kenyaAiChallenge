@@ -1,259 +1,484 @@
-# Hifadhi: Giving invisible farmers a credit history
+# Hifadhi: giving invisible farmers a credit history
 
-**Alternative Agricultural Credit Scoring Through Social Infrastructure, Graph Verification, and AI Explainability.**
+**Alternative agricultural credit scoring through community verification, a relational trust graph, and explainable AI.**
+
+Hifadhi (Swahili for *to preserve/save*) is built by **Team Code Green** for the **Kenya AI Challenge**, responding to AFRACA's **"Invisible Farmer"** brief under the **Mercy Corps AgriFin** track.
 
 ---
 
 ## 1. Overview
-Millions of smallholder farmers across Kenya remain excluded from formal credit because traditional lending systems rely heavily on collateral (such as land titles or property ownership) and formal credit histories. This disproportionately affects youth, women, PWDs, and first-time farmers who are productive and capable of repaying loans but remain invisible to formal financial institutions.
 
-**Hifadhi** (meaning *to preserve/save* in Swahili) solves this by mapping community trust signals—including local elder testimony, school fee records, Chama savings activity, and cooperative delivery histories—into a relationship graph database. By leveraging social infrastructure as credit infrastructure, Hifadhi extracts verified community trust networks to construct a reliable alternative credit profile.
+Millions of smallholder farmers in Kenya remain excluded from formal credit because lending still depends on collateral and formal credit history. Hifadhi builds an alternative credit profile from evidence that already exists in rural communities:
 
-Developed for **AFRACA's official "Invisible Farmer" brief** under the **Mercy Corps AgriFin track** of the **Kenya AI Challenge**, Hifadhi is built by **Team Code Green** to bridge the gap between rural community trust and formal financial eligibility.
+- community testimony from chiefs, elders, teachers, and neighbours
+- buyer and agrovet relationships
+- Chama/SACCO contribution discipline
+- in-kind settlement records
+- satellite-derived farm activity, where available
 
----
-
-## 2. Key Features
-* **Graph-Based Risk Profiling (Neo4j):** Models multi-node relationships between farmers, farms, local chiefs, savings groups, cooperatives, and buyers to identify and prevent collusive vouching loops.
-* **Dynamic Trust Weighting Engine:** Computes alternative credit scores based on verifier node credibility (e.g., Chiefs/SACCO officers are weighted at `4.0`, neighbors at `1.0`).
-* **Social Accountability Penalties:** Implements a timeout scoring system where non-responsive verifiers are penalized to `0` but their weights remain in the score calculation, discouraging unverified profiles.
-* **AI Explainability (Gemini 2.5 Flash):** Translates complex graph clusters and scores into natural, explainable text in English and Swahili, outlining key score drivers and risk factors.
-* **Integrated USSD/SMS Verification (Africa's Talking):** Fully integrated callback handlers for SMS vouching requests and interactive USSD response callbacks.
-* **Premium Admin Dashboard:** Real-time monitoring portal for credit officers to start verification sessions, audit verification logs, and view explainability scores.
-* **Dynamic Connection Settings:** An interactive Settings menu (`⚙️`) in the UI that stores custom backend URLs in the browser's local storage—ideal for hot-swapping temporary ngrok/localtunnel URLs during testing.
+The result is a deterministic, auditable score with a full component breakdown, a loan recommendation, and a plain-language explanation in English or Kiswahili.
 
 ---
 
-## 3. Tech Stack
-* **Backend:**
-  * Framework: FastAPI (Python 3.12+)
-  * Server: Uvicorn
-  * Database: Neo4j Graph Database
-  * AI SDK: `google-generativeai` (Gemini 2.5 Flash)
-  * Telecom Integration: `africastalking` SDK
-  * Schemas & Settings: `pydantic` & `pydantic-settings`
-* **Frontend:**
-  * Framework: React 19
-  * Build Tool: Vite 8.1.0
-  * Language: TypeScript 6.0
-  * CSS Framework: Tailwind CSS v4
-  * Icons: `lucide-react`
-* **Hosting & Deployment:**
-  * Frontend: Netlify
-  * Backend: Render
+## 2. What is implemented
+
+- **Six-step case workflow** in the frontend: farmer, farm, network, verification, score, loan.
+- **Live trust graph** rendered from the API response, with force layout, reduced-motion support, and a recorded replay.
+- **Portfolio and analytics dashboards** backed by real endpoints: score distribution, decision mix, county coverage, loan book, response rate, component averages, and fairness indicators.
+- **Two-axis scoring**: a character axis from community, buyer, discipline, and settlement signals; an optional capacity axis from farm activity.
+- **Verifier credibility** and pooled testimony with a category-diversity bonus.
+- **Explainability API** that sends only a privacy-reduced score breakdown to the configured provider and returns expert- or farmer-facing prose.
+- **Loan lifecycle**: create against an eligible score, disburse, repay, or default.
+- **English/Kiswahili UI** and a persisted light/dark theme.
+
+The UI is driven by an event log and a pure reducer in `frontend/src/domain/graph`; components do not mutate graph state directly.
 
 ---
 
-## 4. Architecture Overview
+## 3. Tech stack
 
-```
-               +-------------------------------------------+
-               |         Admin Dashboard (React)           |
-               +---------------------+---------------------+
-                                     | (API Requests)
+### Backend
+
+| Concern | Choice |
+| --- | --- |
+| Framework | FastAPI, Python 3.12+ |
+| Database | PostgreSQL on Neon |
+| ORM / driver | SQLAlchemy 2 async + asyncpg |
+| Migrations | Alembic |
+| Validation / settings | Pydantic v2 + pydantic-settings |
+| Package manager | uv |
+| Explainability | Groq via `langchain-groq` (provider is swappable) |
+| Farm activity | Google Earth Engine, optional; null provider by default |
+
+Neo4j is no longer the primary store. The old `NEO4J_*` settings remain temporarily required by `Settings` but are marked deprecated.
+
+### Frontend
+
+| Concern | Choice |
+| --- | --- |
+| Framework | React 19 + TypeScript 6 |
+| Build | Vite 8 |
+| Styling | Tailwind CSS 4 + design tokens in `src/styles/tokens.css` |
+| Components | shadcn/ui + Radix primitives |
+| Data | TanStack Query + axios |
+| Contracts | Zod at every API boundary + generated OpenAPI types |
+| State | Zustand for graph/case state; pure reducer in `src/domain` |
+| Motion / graph | Motion + d3-force |
+| i18n | In-house English/Kiswahili dictionary |
+| Tests | Vitest + Testing Library; Playwright for e2e |
+
+Design language: **"night harvest"** — near-black green canvas, luminous graph nodes, restrained motion. Fonts are Fraunces, Hanken Grotesk, and JetBrains Mono, self-hosted.
+
+---
+
+## 4. Architecture
+
+```text
+                    +----------------------------------+
+                    |  React SPA (Vite)                |
+                    |  portfolio / analytics / case    |
+                    +----------------+-----------------+
+                                     | HTTPS + Zod validation
                                      v
-                       +-------------+-------------+
-                       |       FastAPI Backend     |
-                       +-------------+-------------+
-                                     |
-             +-----------------------+-----------------------+
-             |                       |                       |
-             v                       v                       v
-     +-------+-------+       +-------+-------+       +-------+-------+
-     |  Neo4j Aura   |       | Google Gemini |       | Africa's      |
-     |  Graph DB     |       | (Explainability|      | Talking       |
-     +---------------+       +---------------+       +-------+-------+
-                                                             |
-                                                             v (SMS/USSD)
-                                                     +-------+-------+
-                                                     | Verifiers /   |
-                                                     | Farmers       |
-                                                     +---------------+
+                    +----------------------------------+
+                    |  FastAPI                         |
+                    |  api -> services -> repositories |
+                    +----+-------------+---------------+
+                         |             |
+             SQLAlchemy  |             |  provider call
+                         v             v
+              +------------------+   +----------------------+
+              | Postgres (Neon)  |   | Groq explanation API |
+              | relational trust |   +----------------------+
+              | graph + scoring  |
+              +--------+---------+
+                       |
+                       | optional
+                       v
+              +------------------+
+              | Google Earth     |
+              | Engine (NDVI)    |
+              +------------------+
 ```
 
-1. **Verification Initiated:** A loan officer requests verification on the Dashboard.
-2. **Session Creation:** FastAPI creates a `VerificationSession` node in Neo4j and queries the graph for the farmer's registered `TrustSources`.
-3. **Telecom Outreach:** The backend sends SMS vouching prompts to verifiers via Africa's Talking.
-4. **Trust Validation:** Verifiers respond to prompts either by replying to the SMS or by dialing the USSD shortcode.
-5. **Score Aggregation:** When all participants respond (or the session times out), the backend runs Cypher queries to compute the final weighted trust score.
-6. **AI Explanation:** Gemini 2.5 Flash generates a structured natural language analysis based on the scoring results.
-7. **Notification:** The final decision is sent as a text notification back to the farmer, and the dashboard is updated.
+Request flow:
+
+1. A loan officer creates a farmer, farm, and network links.
+2. `POST /api/verify/start` snapshots linked trust sources, market actors, and social groups into a verification session.
+3. Responses are submitted per participant. Each response writes a typed signal row.
+4. When every participant has responded or timed out, the scoring service computes and persists a new `ScoreProfile` version plus its `ScoreComponent` rows.
+5. The breakdown endpoint exposes the full calculation; the explanation endpoint adds provider-generated prose.
+6. Eligible scores can be used to create and resolve loans.
+7. The frontend renders every step from the API response through the graph reducer.
 
 ---
 
-## 5. Graph Data Model
+## 5. Data model
 
-The application enforces strict data constraints and index configurations inside Neo4j. The node types and relationships implemented include:
+The graph is modelled relationally, not in a graph database:
 
-### Node Labels
-* `Farmer`: Primary profile storing identity data (phone, location, registration date).
-* `Farm`: Details of the farmer's property and production details.
-* `TrustSource`: Registered verifiers (e.g., Chiefs, Elders, Teachers, Agrovets).
-* `Institution` / `SocialGroup`: SACCOs, Cooperatives, and local Chamas.
-* `MarketActor`: Aggregators and buyers purchasing the farmer's produce.
-* `Testimonial`: Digital record of a verifier's character vouching.
-* `BuyerTestimonial`: Delivery and transaction histories provided by buyers.
-* `InKindSettlementProof`: Records of non-cash payments (e.g., school fee settlements).
-* `VerificationSession`: Active auditing records representing current verification sessions.
-* `FinancialSignal`: Individual transaction metrics.
-* `ScoreProfile` / `Recommendation`: Calculated risk classifications and loan decisions.
+- `farmers`, `farms`
+- `trust_sources`, `institutions`, `social_groups`, `market_actors`
+- link tables: `farmer_trust_source_links`, `farmer_institution_links`, `farmer_social_group_links`, `farmer_market_actor_links`
+- `verification_sessions`, `verification_participants`
+- signals: `testimonials`, `buyer_testimonials`, `discipline_proxies`, `in_kind_settlement_proofs`, `farm_activity_signals`
+- scoring: `score_profiles` (versioned, one current row per farmer), `score_components`
+- `loans`, `verifier_credibility`, `fraud_flags`, `audit_logs`
 
-### Relationships
-* `(Farmer)-[:OWNS]->(Farm)`
-* `(Farmer)-[:VERIFIED_BY]->(TrustSource)`
-* `(Farmer)-[:MEMBER_OF]->(Institution | SocialGroup)`
-* `(Farmer)-[:SELLS_TO]->(MarketActor)`
-* `(TrustSource)-[:SUBMITTED]->(Testimonial)-[:SUPPORTS]->(Farmer)`
-* `(MarketActor)-[:PROVIDED]->(BuyerTestimonial)-[:SUPPORTS]->(Farmer)`
-* `(Farmer)-[:PROVIDED]->(InKindSettlementProof)-[:VALIDATED_BY]->(TrustSource)`
-* `(Farmer)-[:PARTICIPATED_IN]->(VerificationSession)-[:COLLECTED]->(Testimonial)`
-* `(Farmer)-[:HAS_SIGNAL]->(FinancialSignal)-[:CONTRIBUTES_TO]->(FinancialScore)`
-* `(Farmer)-[:HAS_SCORE]->(ScoreProfile)`
-* `(Farmer)-[:RECEIVED]->(Recommendation)`
+Key relationships:
+
+```text
+Farmer -> Farm
+Farmer -> TrustSource      (community testimony)
+Farmer -> MarketActor      (buyer relationship)
+Farmer -> SocialGroup      (discipline proxy)
+Farmer -> Institution
+Farmer -> VerificationSession -> VerificationParticipant -> signal rows
+Farmer -> ScoreProfile -> ScoreComponent
+Farmer -> Loan
+```
+
+The schema is created with Alembic. Least-privilege database roles live in `backend/db/roles.sql`; the scoring role can read a `farmers_scoring_safe` view that excludes gender.
 
 ---
 
-## 6. Getting Started & Installation
+## 6. Scoring
+
+The implementation follows the provisional scorecard in `scoring.md`.
+
+### Response scale
+
+Subjective responses use a forced 4-point scale with no neutral midpoint:
+
+| Rating | Meaning | Score value |
+| --- | --- | --- |
+| 1 | Poor / unreliable | 0 |
+| 2 | Below average | 33.3 |
+| 3 | Above average | 66.7 |
+| 4 | Excellent / very reliable | 100 |
+
+A testimony is excluded when `personal_knowledge_flag` is false.
+
+### Character axis
+
+```
+contribution = base_category_weight x credibility_multiplier x score_value
+```
+
+- Base weights are category constants (for example Chief = 4.0, Neighbour = 1.0).
+- New verifiers start with credibility 1.0; the multiplier is stored per verifier.
+- Multiple testimonies are pooled as a weighted average.
+- Testimony from three or more distinct categories receives a 1.1x diversity bonus.
+
+Available components are renormalised:
+
+| Component | Weight |
+| --- | ---: |
+| Discipline proxy | 0.35 |
+| Buyer relationship | 0.30 |
+| In-kind settlement | 0.20 |
+| Community testimony | 0.15 |
+
+### Capacity axis
+
+Capacity comes from the latest farm activity signal (cultivation continuity). It must already be per-hectare normalised; raw acreage is never scored. When no reading exists, capacity is `null` and the final score uses character only.
+
+### Final score and decisions
+
+```
+final = character                                  (capacity unavailable)
+final = 0.60 x character + 0.40 x capacity         (capacity available)
+```
+
+| Final score | Decision | Recommendation |
+| --- | --- | --- |
+| >= 75 | `ELIGIBLE` | `APPROVE_LEVEL_2`, KES 5,000 |
+| >= 60 | `ELIGIBLE` | `APPROVE_LEVEL_1`, KES 3,000 |
+| >= 45 | `REVIEW_REQUIRED` | Manual review |
+| < 45 | `DECLINE` | Insufficient community trust |
+
+Bias rules are enforced in the design and reflected in the data model: gender, ethnicity, religion, disability, age, and raw acreage are not scoring inputs. The analytics API reports the excluded-input list and acreage/score correlation for review.
+
+---
+
+## 7. API surface
+
+Base URL: `http://localhost:8000`. Interactive docs: `/docs`.
+
+### Health and analytics
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/health` |
+| `GET` | `/api/stats/overview` |
+
+### Farmers, farms, and network
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/farmers` |
+| `GET` | `/api/farmers` |
+| `GET` | `/api/farmers/{farmer_id}` |
+| `POST` | `/api/farmers/{farmer_id}/farm` |
+| `GET` | `/api/farmers/{farmer_id}/network` |
+| `POST` | `/api/farmers/{farmer_id}/link-trust-source` |
+| `POST` | `/api/farmers/{farmer_id}/link-institution` |
+| `POST` | `/api/farmers/{farmer_id}/link-social-group` |
+| `POST` | `/api/farmers/{farmer_id}/link-market-actor` |
+| `POST` | `/api/farmers/{farmer_id}/inkind-settlement` |
+
+### Trust entities
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/trust/sources` |
+| `POST` | `/api/trust/institutions` |
+| `POST` | `/api/trust/social-groups` |
+| `POST` | `/api/trust/market-actors` |
+
+### Verification and scoring
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/verify/start` |
+| `POST` | `/api/verify/{session_id}/respond/{participant_id}` |
+| `POST` | `/api/verify/{session_id}/timeout/{participant_id}` |
+| `GET` | `/api/verify/{session_id}/status` |
+| `GET` | `/api/verify/{session_id}/result` |
+| `GET` | `/api/verify/{session_id}/breakdown` |
+| `GET` | `/api/verify/{session_id}/explanation` |
+
+The explanation route is an LLM call and can take about 60 seconds. It accepts `mode=expert|farmer` and `language=<name>`.
+
+### Loans
+
+| Method | Path |
+| --- | --- |
+| `POST` | `/api/loans` |
+| `GET` | `/api/loans?farmer_id=&status=` |
+| `POST` | `/api/loans/{loan_id}/disburse` |
+| `POST` | `/api/loans/{loan_id}/repay` |
+| `POST` | `/api/loans/{loan_id}/default` |
+
+Errors use `{"detail": "..."}` or a validation list. Duplicate or invalid state returns 409, validation 422, missing resources 404. Request bodies reject unknown fields.
+
+---
+
+## 8. Frontend routes
+
+| Route | Screen |
+| --- | --- |
+| `/` | Portfolio: metrics, score bands, searchable farmer list |
+| `/ui` | Analytics dashboard: loan book, decision mix, fairness, recent cases |
+| `/case/new` | New six-step assessment |
+| `/case/:caseId` | Resume an assessment from the network endpoint |
+| `/replay` | Recorded Grace Wanjiku walkthrough with score and breakdown |
+
+The case workflow is:
+
+1. Farmer
+2. Farm
+3. Trust network
+4. Verification
+5. Score and explanation
+6. Loan
+
+---
+
+## 9. Getting started
 
 ### Prerequisites
-* **Python** (version 3.12 or higher)
-* **Node.js** (version 18 or higher)
-* **Neo4j Instance:** A free cloud instance on Neo4j Aura DB or a local Neo4j Community Server.
 
----
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 20+ and npm
+- A Neon PostgreSQL database (or any PostgreSQL 15+ instance)
+- Optional: a Groq API key for explanations
+- Optional: a Google Earth Engine service account for farm activity
 
-### Step 1: Clone the Repository
+### 1. Clone
+
 ```bash
 git clone https://github.com/Deo-Siatah/CodeGreen-kenyaAiChallenge.git
 cd CodeGreen-kenyaAiChallenge
 ```
 
----
+### 2. Backend
 
-### Step 2: Backend Installation & Setup
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Create and activate a Python virtual environment:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
-   ```
-3. Install dependencies in editable mode:
-   ```bash
-   pip install -e .
-   ```
-4. Create a `.env` file in the `backend` folder and populate it with your credentials (see the **Environment Variables** table below).
-5. Initialize constraints and indexes in your Neo4j database:
-   ```bash
-   python scripts/init_graph.py
-   ```
-6. Start the FastAPI development server:
-   ```bash
-   uvicorn main:app --reload
-   ```
+```bash
+cd backend
+cp .env.example .env
+# edit .env with your database and provider credentials
+uv sync
+uv run alembic upgrade head
+uv run uvicorn main:app --reload
+```
 
----
+The API runs at `http://localhost:8000`. Run `uv run pytest` for tests.
 
-### Step 3: Frontend Installation & Setup
-1. Navigate to the frontend directory:
-   ```bash
-   cd ../frontend
-   ```
-2. Install npm packages:
-   ```bash
-   npm install
-   ```
-3. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
-4. Open your browser and navigate to `http://localhost:5173`.
+To load demo farmers and linked signals:
 
----
+```bash
+uv run python scripts/seed_demo.py
+```
 
-## 7. Environment Variables
+Apply the least-privilege roles after the schema exists:
 
-Create a `.env` file in the `/backend` folder with the following variables:
+```bash
+psql "$DATABASE_URL_DIRECT" -f db/views.sql
+psql "$DATABASE_URL_DIRECT" -f db/roles.sql
+```
 
-| Environment Variable | Required | Description |
-| :--- | :---: | :--- |
-| `APP_NAME` | Yes | Name of the application (e.g. `AgriForesight`) |
-| `NEO4J_URI` | Yes | Bolt connection string for your database (e.g. `neo4j+s://...`) |
-| `NEO4J_USERNAME` | Yes | Username for your Neo4j instance |
-| `NEO4J_PASSWORD` | Yes | Password for your Neo4j instance |
-| `NEO4J_DATABASE` | Yes | Name of the default database |
-| `BACKEND_URL` | Yes | Host address of your running backend (e.g. `http://localhost:8000` or ngrok URL) |
-| `USSD_WEBHOOK_URL` | Yes | The callback URL registered in Africa's Talking for USSD callbacks |
-| `SMS_WEBHOOK_URL` | Yes | The callback URL registered in Africa's Talking for incoming SMS webhooks |
-| `AFRICASTALKING_USERNAME` | Yes | Your Africa's Talking account username (use `sandbox` for testing) |
-| `AFRICASTALKING_API_KEY` | Yes | The API key generated from your Africa's Talking developer dashboard |
-| `GEMINI_API_KEY` | Yes | Google Gemini API key to activate natural language explainability features |
+Migrations use `DATABASE_URL_DIRECT`, never the pooled URL. To target a disposable branch explicitly:
+
+```bash
+uv run alembic -x dburl="$TEST_DATABASE_URL_DIRECT" upgrade head
+```
+
+### 3. Frontend
+
+```bash
+cd ../frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. Set `VITE_API_URL` to the backend origin.
+
+### 4. Verification commands
+
+```bash
+cd frontend
+npm run check    # typecheck + lint + production build + unit tests
+npm run e2e      # Playwright; requires a TEST database branch and running servers
+```
+
+From `backend`:
+
+```bash
+uv run pytest tests/unit
+uv run ruff check .
+```
+
+Never point e2e or integration tests at the main database branch.
 
 ---
 
-## 8. Project Structure
+## 10. Environment variables
+
+Create `backend/.env` from `backend/.env.example`.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `APP_NAME` | Yes | Application name |
+| `DATABASE_URL_POOLED` | Yes | PgBouncer/Neon pooled URL used by the app |
+| `DATABASE_URL_DIRECT` | Yes | Direct URL used by Alembic and migrations |
+| `DB_SCORING_ROLE` | No | Least-privilege role, default `app_scoring` |
+| `DB_ANALYTICS_ROLE` | No | Analytics role, default `app_analytics` |
+| `ALLOWED_ORIGINS` | No | Comma-separated CORS origins, default `http://localhost:5173` |
+| `FARM_ACTIVITY_PROVIDER` | No | `null` (default) or `earth_engine` |
+| `EARTH_ENGINE_SERVICE_ACCOUNT_JSON` | Yes | Path to the service-account file; validated when Earth Engine is enabled |
+| `GROQ_API_KEY` | For explanations | Groq key used by the active provider |
+| `GROQ_MODEL` | No | Default `openai/gpt-oss-120b` |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Currently yes | Retained settings; Gemini provider is disabled in code |
+| `DEFAULT_EXPLANATION_MODE` | No | `farmer` (default) or `expert` |
+| `BACKEND_URL` | Yes | Public backend origin |
+| `USSD_WEBHOOK_URL` / `SMS_WEBHOOK_URL` | Yes | Reserved callback URLs |
+| `AFRICASTALKING_API_KEY` / `AFRICASTALKING_USERNAME` | Yes | Africa's Talking credentials retained for SMS work |
+| `TEST_DATABASE_URL_DIRECT` | Tests only | Direct URL to a disposable test branch |
+| `NEO4J_*` | Currently yes | Deprecated; retained until the migration is fully verified |
+
+Frontend `frontend/.env`:
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_API_URL` | Backend origin, default `http://localhost:8000` |
+
+Never commit `.env` files or real credentials.
+
+---
+
+## 11. Project structure
 
 ```text
 CodeGreen-kenyaAiChallenge/
 ├── backend/
-│   ├── api/                   # FastAPI route controllers (farmers, relationships, ussd, verification)
-│   ├── core/                  # Configuration loaders, settings, and database connector
-│   ├── graph/                 # Database schemas, unique constraints, and indexes
-│   ├── prompts/               # System and context formatting prompts for Gemini
-│   ├── repositories/          # Neo4j Cypher query interfaces
-│   ├── schemas/               # Pydantic request and response models
-│   ├── scripts/               # Graph database seeding and automated test scripts
-│   ├── services/              # Core scoring, AI explanation, USSD, and SMS business logic
-│   ├── utils/                 # Utility files (phone normalization, logging, helper functions)
-│   ├── main.py                # FastAPI app entrypoint
+│   ├── api/                  # FastAPI routers: section13 (main API), stats, ai, trust
+│   ├── core/                 # Settings and async database engines
+│   ├── db/                   # Role grants and scoring-safe view SQL
+│   ├── migrations/           # Alembic environment and versions
+│   ├── models/               # SQLAlchemy models (farmers, trust, signals, scoring, loans)
+│   ├── repositories/         # Query and persistence layer
+│   ├── schemas/              # Pydantic request/response contracts
+│   ├── services/             # Scoring, verification, trust, loans, stats, explainability
+│   ├── scripts/              # Demo seed and provider smoke scripts
+│   ├── tests/                # Unit and integration tests
+│   ├── main.py               # App entrypoint, lifespan, router registration
 │   ├── Dockerfile
-│   └── pyproject.toml         # Backend package definitions and dependencies
+│   └── pyproject.toml
 ├── frontend/
+│   ├── scripts/              # Replay recorder
 │   ├── src/
-│   │   ├── assets/            # Static image assets
-│   │   ├── components/        # Dashboard, FarmerList, FarmerDetail, TestifiersView components
-│   │   ├── services/          # Unified API service layer with local storage configuration
-│   │   ├── App.css
-│   │   ├── App.tsx            # App structure and tab layouts
-│   │   ├── index.css          # Tailwind imports
-│   │   └── main.tsx
-│   ├── index.html
-│   ├── package.json           # Frontend dependency declarations
-│   └── vite.config.ts
-├── setup.md                   # MVP implementation logs and developer notes
-└── README.md                  # This file
+│   │   ├── api/              # axios client, endpoints, Zod schemas, generated OpenAPI types
+│   │   ├── app/              # Case layout, steps, stepper, evidence ledger
+│   │   ├── components/       # Product header, shadcn/ui primitives
+│   │   ├── domain/graph/     # Pure reducer, hydrate, selectors, ring layout
+│   │   ├── e2e/              # Playwright fixtures and specs
+│   │   ├── features/         # portfolio, dashboard, graph, ussd simulator
+│   │   ├── i18n/             # English/Kiswahili dictionary and toggles
+│   │   ├── replay/           # Recorded replay schema and Grace Wanjiku data
+│   │   ├── styles/           # Design tokens
+│   │   ├── test/             # MSW server and fixtures
+│   │   └── theme/            # Light/dark provider and toggle
+│   ├── docs/                 # Legacy UI inventory
+│   ├── playwright.config.ts
+│   └── package.json
+├── AGENTS.md                 # Engineering rules for contributors/agents
+├── scoring.md                # Data and scoring design
+├── setup.md                  # Original MVP implementation plan
+├── CODEBASE_SUMMARY.md       # Historical codebase audit
+└── README.md
 ```
 
 ---
 
-## 9. Current Status & Known Limitations
-* **Fully Working:**
-  * Schema creation, Cypher graph query generation, and Neo4j database insertions.
-  * Quantitative scoring algorithms (dynamic weighting based on participant type).
-  * Auto-generation of USSD callback formats and verification profiles.
-  * Live **Gemini AI Explainability Engine** generating natural language summaries.
-  * **Africa's Talking SMS Service** sending live text notifications.
-* **Simulated/Sandboxed:**
-  * **Verifier Response Simulator:** The admin dashboard features an interactive console that simulates USSD and SMS verifier responses locally. This allows you to evaluate scoring updates without incurring SMS delivery fees.
-* **Limitations:**
-  * USSD requires standard shortcode provisioning from telecom companies to go live outside Africa's Talking developer sandbox.
-  * The credit score is static once calculated and requires manual trigger re-evaluations if new relationships are appended.
+## 12. Current status and limitations
+
+**Working**
+
+- Farmer, farm, trust-network, verification, scoring, explanation, loan, and analytics endpoints
+- Versioned score profiles with component-level breakdowns
+- Portfolio, analytics, six-step case, and replay screens
+- Unit and integration tests for the current API contracts
+
+**Not yet live**
+
+- **USSD/SMS callback routes.** The frontend includes a USSD simulator and the Africa's Talking settings/SMS helpers remain, but live callback endpoints are not registered in the current app.
+- **Automatic outreach and timeout scheduler.** Verification participants are snapshotted and can be responded to or timed out through the API; there is no background worker.
+- **Gemini.** The active explanation provider is Groq. The Gemini provider is commented out.
+- **Earth Engine by default.** `FARM_ACTIVITY_PROVIDER=null` means capacity is unavailable until a real provider is configured.
+- **Authentication.** There is no auth layer yet; the API client keeps a single interceptor seam for it.
+- **Backend test collection.** Focused unit and API tests pass, but the full collection still includes legacy modules (`backend/tests.py` and an obsolete Gemini provider test) that need cleanup before `uv run pytest` is a clean signal.
 
 ---
 
-## 10. Team
-**Team Code Green:**
-* **Deo Siatah** (Lead Software Engineer / Graph Architecture)
-* **Laura Shaviya** (Frontend Developer / UX Lead)
-* **Dancan Mibei** (Database Administrator / Scoring Logic)
-* **Rebeca Agai** (AI Prompt Engineer / QA Specialist)
-* **Said Kombe** (Systems Integrator / Telecom Operations)
+## 13. Team
+
+**Team Code Green**
+
+- **Deo Siatah** — Lead Software Engineer / Graph Architecture
+- **Laura Shaviya** — Frontend Developer / UX Lead
+- **Dancan Mibei** — Database Administrator / Scoring Logic
+- **Rebeca Agai** — AI Prompt Engineer / QA Specialist
+- **Said Kombe** — Systems Integrator / Telecom Operations
 
 ---
 
-## 11. Acknowledgments
-* **AFRACA (African Rural and Agricultural Credit Association)** for the "Invisible Farmer" challenge brief.
-* **Mercy Corps AgriFin** for the AgriFin track and mentoring.
-* **Neo4j** for providing powerful graph database solutions to map community trust networks.
+## 14. Acknowledgments
+
+- **AFRACA** for the "Invisible Farmer" challenge brief
+- **Mercy Corps AgriFin** for the track and mentoring
+- **Neon** for PostgreSQL hosting
+- **Groq** for the current explanation provider
+- **Google Earth Engine** for satellite farm-activity data
