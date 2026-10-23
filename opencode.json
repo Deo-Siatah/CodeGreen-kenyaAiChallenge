@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/deepseek-v4.1-flash-free",
+  "default_agent": "build",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "npm run *": "allow",
+      "npm test*": "allow",
+      "npm exec *": "allow",
+      "npx tsc *": "allow",
+      "npx shadcn@latest *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow"
+    }
+  },
+  "references": {
+    "api_routes": {
+      "path": "backend/api",
+      "description": "FastAPI route definitions; source of truth for endpoint paths and status codes"
+    },
+    "api_schemas": {
+      "path": "backend/schemas",
+      "description": "Pydantic request/response schemas; source of truth for frontend zod contracts"
+    },
+    "frontend_docs": {
+      "path": "frontend/docs",
+      "description": "Legacy UI inventory and port decisions"
+    }
+  },
+  "mcp": {
+    "shadcn": {
+      "type": "local",
+      "command": ["npx", "-y", "shadcn@latest", "mcp"],
+      "enabled": true
+    }
+  }
+}

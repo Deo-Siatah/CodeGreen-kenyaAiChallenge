@@ -17,6 +17,9 @@ backend/.env
 backend/.env.*
 !backend/.env.example
 backend/secrets/*
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
 
 # Node / Frontend
 frontend/node_modules/
@@ -28,6 +31,10 @@ frontend/.env.local
 frontend/.env.*.local
 frontend/.vscode/
 frontend/.idea/
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/coverage/
 
 # Local Netlify folder
 .netlify
