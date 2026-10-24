@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     EARTH_ENGINE_SERVICE_ACCOUNT_JSON: str
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:5173",
-        "https://codegreen-kenyaaichallenge.onrender.com",
+        "https://hifadhi-app-neon.vercel.app",
     ]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
