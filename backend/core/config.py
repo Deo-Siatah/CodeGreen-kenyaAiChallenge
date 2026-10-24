@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     DB_ANALYTICS_ROLE: str = "app_analytics"
     FARM_ACTIVITY_PROVIDER: Literal["null", "earth_engine"] = "null"
     EARTH_ENGINE_SERVICE_ACCOUNT_JSON: str
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173"]
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "https://codegreen-kenyaaichallenge.onrender.com",
+    ]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
