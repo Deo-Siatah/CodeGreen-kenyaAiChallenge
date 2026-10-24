@@ -30,17 +30,6 @@ class Settings(BaseSettings):
     # never main. Optional so the app boots without it.
     TEST_DATABASE_URL_DIRECT: str | None = None
 
-    # DEPRECATED - remove after Postgres migration is verified in production
-    NEO4J_URI: str
-    NEO4J_USERNAME: str
-    NEO4J_PASSWORD: str
-    NEO4J_DATABASE: str
-
-    USSD_WEBHOOK_URL: str
-    SMS_WEBHOOK_URL: str
-    BACKEND_URL: str
-    AFRICASTALKING_API_KEY: str
-    AFRICASTALKING_USERNAME: str
     GEMINI_API_KEY: str
     GROQ_API_KEY: str
     GROQ_MODEL: str = "openai/gpt-oss-120b"
