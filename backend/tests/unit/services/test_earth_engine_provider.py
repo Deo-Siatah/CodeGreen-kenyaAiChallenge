@@ -95,6 +95,37 @@ class FakeEE:
         return image
 
 
+def test_init_uses_default_project(monkeypatch, tmp_path):
+    key_path = tmp_path / "earth-engine.json"
+    key_path.write_text(
+        '{"client_email": "service@example.iam.gserviceaccount.com", '
+        '"project_id": "hifadhi-earth-engine"}',
+        encoding="utf-8",
+    )
+    calls = {}
+
+    class FakeCredentials:
+        def __init__(self, email, key_file):
+            calls["email"] = email
+            calls["key_file"] = key_file
+
+    def fake_initialize(credentials, project=None):
+        calls["credentials"] = credentials
+        calls["project"] = project
+
+    fake_ee = SimpleNamespace(
+        ServiceAccountCredentials=FakeCredentials,
+        Initialize=fake_initialize,
+    )
+    monkeypatch.setattr(provider_module, "ee", fake_ee)
+
+    EarthEngineFarmActivityProvider(str(key_path))
+
+    assert calls["email"] == "service@example.iam.gserviceaccount.com"
+    assert calls["key_file"] == str(key_path)
+    assert calls["project"] is None
+
+
 @pytest.mark.asyncio
 async def test_empty_cloud_filtered_collection_returns_none(monkeypatch):
     provider = EarthEngineFarmActivityProvider.__new__(EarthEngineFarmActivityProvider)

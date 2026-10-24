@@ -53,8 +53,9 @@ class EarthEngineFarmActivityProvider(FarmActivityProvider):
         except Exception as exc:
             raise EarthEngineAuthenticationError(
                 "Earth Engine authentication failed. Check "
-                "EARTH_ENGINE_SERVICE_ACCOUNT_JSON and the Earth Engine project "
-                "configuration."
+                "EARTH_ENGINE_SERVICE_ACCOUNT_JSON, the Earth Engine project "
+                "registration, and the service account's IAM roles. "
+                f"Underlying error: {type(exc).__name__}: {exc}"
             ) from exc
 
     async def fetch_latest(
